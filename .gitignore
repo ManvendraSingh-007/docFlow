@@ -26,6 +26,8 @@ runtime.log
 
 # Local data
 /data/uploads/
+/data/app.secret
+/data/encryption.key
 .sample_data/
 
 # Build artifacts
