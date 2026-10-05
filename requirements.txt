@@ -8,3 +8,7 @@ pypdf>=5.0.0
 pillow>=10.4.0
 pytest>=8.3.0
 python-dotenv>=1.0.1
+psycopg[binary]>=3.2
+itsdangerous>=2.2
+cryptography>=43
+pypdfium2>=4.30
