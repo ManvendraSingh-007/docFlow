@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-slate-100">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}DocFlow - Headless Document & PO to Webhook Engine{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif']
+          },
+          colors: {
+            brand: {
+              50: '#f8fafc',
+              100: '#e2e8f0',
+              500: '#0f172a',
+              600: '#1e293b',
+              700: '#334155',
+              900: '#0f172a'
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    [x-cloak] { display: none !important; }
+    :root {
+      --bg: #f3f5f9;
+      --panel: #ffffff;
+      --panel-alt: #f8fafc;
+      --border: #e2e8f0;
+      --text: #0f172a;
+      --muted: #64748b;
+      --soft: #dbeafe;
+      --success: #166534;
+      --warning: #92400e;
+      --danger: #b91c1c;
+      --ink: #0f172a;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', sans-serif;
+    }
+
+    .material-symbols-outlined {
+      font-family: 'Material Symbols Outlined';
+      font-weight: normal;
+      font-style: normal;
+      font-size: 18px;
+      line-height: 1;
+      letter-spacing: normal;
+      text-transform: none;
+      display: inline-block;
+      white-space: nowrap;
+      word-wrap: normal;
+      direction: ltr;
+      -webkit-font-smoothing: antialiased;
+      font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+      vertical-align: middle;
+    }
+
+    .card-shell {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 1rem;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+    }
+  </style>
+</head>
+<body class="h-full flex flex-col antialiased selection:bg-slate-900 selection:text-white">
+
+  <header class="sticky top-0 z-40 border-b border-slate-200 bg-white/90 backdrop-blur-sm">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex items-center justify-between h-16">
+        <div class="flex items-center space-x-3">
+          <a href="/" class="flex items-center space-x-2">
+            <div class="w-9 h-9 rounded-lg bg-slate-900 text-white flex items-center justify-center shadow-sm">
+              <span class="material-symbols-outlined">bolt</span>
+            </div>
+            <span class="text-xl font-bold tracking-tight text-slate-900">Doc<span class="text-slate-500">Flow</span></span>
+          </a>
+          <span class="hidden sm:inline-flex items-center rounded-full border border-slate-200 bg-slate-100 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-600">
+            Headless EDI
+          </span>
+        </div>
+
+        <nav class="flex items-center space-x-2 text-sm font-medium">
+          <a href="/" class="rounded-md px-3 py-2 text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900">
+            Dashboard
+          </a>
+          <a href="/settings-view" class="rounded-md px-3 py-2 text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900">
+            Settings
+          </a>
+          <a href="/docs" target="_blank" class="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:border-slate-300 hover:text-slate-900">
+            API Docs
+            <span class="material-symbols-outlined" style="font-size:16px;">open_in_new</span>
+          </a>
+        </nav>
+      </div>
+    </div>
+  </header>
+
+  <main class="flex-1 pb-12">
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="border-t border-slate-200 bg-white py-6 mt-auto">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-500">
+      <div>
+        <span class="font-semibold text-slate-700">DocFlow</span> — purchase orders and invoices parsed with deterministic verification.
+      </div>
+      <div class="flex items-center gap-3">
+        <span class="inline-flex items-center gap-1"><span class="material-symbols-outlined" style="font-size:15px;">check_circle</span> Webhook active</span>
+        <span class="text-slate-300">•</span>
+        <span>Verification engine</span>
+      </div>
+    </div>
+  </footer>
+
+  {% block scripts %}{% endblock %}
+</body>
+</html>

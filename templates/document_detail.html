@@ -1,0 +1,408 @@
+{% extends "base.html" %}
+
+{% block title %}Inspect {{ doc.data.document_number or doc.original_filename }} | DocFlow{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">
+  <div class="flex flex-col gap-4 border-b border-slate-200 pb-6 sm:flex-row sm:items-center sm:justify-between">
+    <div>
+      <nav class="mb-2 flex items-center gap-2 text-xs text-slate-500">
+        <a href="/" class="inline-flex items-center gap-1 hover:text-slate-800"><span class="material-symbols-outlined" style="font-size:16px;">arrow_back</span> Back to stream</a>
+        <span>/</span>
+        <span class="font-mono text-slate-700">{{ doc.id[:8] }}</span>
+      </nav>
+      <div class="flex flex-wrap items-center gap-3">
+        <h1 class="text-2xl font-bold text-slate-900 font-mono">{{ doc.data.document_number if doc.data and doc.data.document_number else doc.original_filename }}</h1>
+
+        {% if doc.status == 'VERIFIED' %}
+          <span class="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">
+            <span class="material-symbols-outlined" style="font-size:14px;">check_circle</span>
+            100% math verified
+          </span>
+        {% elif doc.status == 'REVIEW_REQUIRED' %}
+          <span class="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">
+            <span class="material-symbols-outlined" style="font-size:14px;">warning</span>
+            Needs review
+          </span>
+        {% else %}
+          <span class="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">
+            {{ doc.status }}
+          </span>
+        {% endif %}
+
+        <span class="rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600">Confidence: {{ (doc.confidence * 100)|int }}%</span>
+      </div>
+    </div>
+
+    <div class="flex items-center gap-2">
+      <a href="/api/documents/{{ doc.id }}/export/csv" class="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm transition-colors hover:bg-slate-50">
+        <span class="material-symbols-outlined" style="font-size:16px;">download</span>
+        CSV
+      </a>
+      <button onclick="downloadJson()" class="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm transition-colors hover:bg-slate-50">
+        <span class="material-symbols-outlined" style="font-size:16px;">code</span>
+        JSON
+      </button>
+      <button id="dispatchBtn" onclick="dispatchWebhook()" class="inline-flex items-center gap-1 rounded-lg bg-slate-900 px-4 py-1.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-slate-700">
+        <span class="material-symbols-outlined" style="font-size:16px;">send</span>
+        Dispatch Webhook
+      </button>
+    </div>
+  </div>
+
+  <div class="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-12">
+    <div class="space-y-6 lg:col-span-5">
+      <div class="card-shell flex h-[760px] flex-col overflow-hidden">
+        <div class="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-3">
+          <span class="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-700">
+            <span class="material-symbols-outlined" style="font-size:16px;">description</span>
+            Original document preview
+          </span>
+          <a href="/uploads/{{ doc.filename }}" target="_blank" class="inline-flex items-center gap-1 text-xs font-medium text-slate-700 hover:text-slate-900">
+            Open full
+            <span class="material-symbols-outlined" style="font-size:14px;">open_in_new</span>
+          </a>
+        </div>
+
+        <div class="relative flex-1 overflow-hidden bg-slate-200">
+          {% if doc.file_type == 'PDF' %}
+            <iframe src="/uploads/{{ doc.filename }}" class="h-full w-full border-none"></iframe>
+          {% else %}
+            <div class="flex h-full w-full items-center justify-center p-4">
+              <img src="/uploads/{{ doc.filename }}" alt="Original Document" class="max-h-full max-w-full rounded-md object-contain shadow-sm">
+            </div>
+          {% endif %}
+        </div>
+
+        <div class="flex items-center justify-between border-t border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500">
+          <span>File: <strong class="text-slate-700">{{ doc.original_filename }}</strong></span>
+          <span>Size: {{ (doc.file_size_bytes / 1024)|round(1) }} KB</span>
+        </div>
+      </div>
+
+      <div class="card-shell p-4">
+        <h3 class="mb-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-700">Outbound webhook delivery log</h3>
+        <div id="webhookLogsList" class="space-y-2 text-xs">
+          {% if webhook_logs %}
+            {% for log in webhook_logs %}
+              <div class="rounded-lg border border-slate-200 bg-slate-50 p-2.5 text-slate-700">
+                <div class="flex items-center justify-between font-mono">
+                  <span>HTTP {{ log.status_code }} ({{ log.duration_ms }}ms)</span>
+                  <span class="text-[10px] text-slate-500">{{ log.timestamp[:19] }}</span>
+                </div>
+                <div class="mt-1 truncate font-mono text-[11px] text-slate-600">{{ log.webhook_url }}</div>
+              </div>
+            {% endfor %}
+          {% else %}
+            <p class="italic text-slate-400">No webhook dispatch attempted yet.</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div class="space-y-6 lg:col-span-7">
+      <div class="card-shell p-5">
+        <div class="mb-4 flex items-center justify-between">
+          <h2 class="flex items-center gap-2 text-sm font-bold uppercase tracking-[0.12em] text-slate-700">
+            <span class="material-symbols-outlined" style="font-size:16px;">balance</span>
+            Arithmetic integrity engine
+          </h2>
+          <span class="text-xs text-slate-400">Tolerance: $0.02</span>
+        </div>
+
+        <div class="space-y-3">
+          {% if doc.data and doc.data.verification and doc.data.verification.checks %}
+            {% for check in doc.data.verification.checks %}
+              <div class="flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-slate-700">
+                <div class="mt-0.5">
+                  {% if check.passed %}<span class="material-symbols-outlined" style="font-size:18px;">check_circle</span>{% else %}<span class="material-symbols-outlined" style="font-size:18px;">warning</span>{% endif %}
+                </div>
+                <div class="flex-1 text-xs">
+                  <div class="font-semibold">{{ check.name }}</div>
+                  <p class="mt-0.5">{{ check.message }}</p>
+                </div>
+                <div class="text-right text-[11px] font-bold font-mono text-slate-700">
+                  {% if check.passed %}MATCH{% else %}DIFF{% endif %}
+                </div>
+              </div>
+            {% endfor %}
+          {% endif %}
+
+          {% if doc.data and doc.data.verification and doc.data.verification.flags %}
+            <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <span class="mb-1 block text-[11px] font-bold uppercase tracking-[0.12em] text-slate-700">Human review notes</span>
+              <ul class="list-disc space-y-1 pl-5 text-xs text-slate-600">
+                {% for flag in doc.data.verification.flags %}
+                  <li>{{ flag }}</li>
+                {% endfor %}
+              </ul>
+            </div>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="card-shell p-5">
+        <div class="mb-4 flex items-center justify-between border-b border-slate-100 pb-3">
+          <h2 class="text-sm font-bold uppercase tracking-[0.12em] text-slate-700">Document metadata & parties</h2>
+          <button onclick="saveAndRevalidate()" class="inline-flex items-center gap-1 rounded-lg bg-slate-900 px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm hover:bg-slate-700">
+            <span class="material-symbols-outlined" style="font-size:14px;">save</span>
+            Save & re-check
+          </button>
+        </div>
+
+        <div class="mb-6 grid grid-cols-1 gap-4 text-xs sm:grid-cols-3">
+          <div>
+            <label class="mb-1 block font-semibold text-slate-600">Document / PO #</label>
+            <input type="text" id="docNumber" value="{{ doc.data.document_number if doc.data else '' }}" class="w-full rounded-md border border-slate-300 p-2 font-mono text-slate-900 focus:border-slate-500 focus:outline-none">
+          </div>
+          <div>
+            <label class="mb-1 block font-semibold text-slate-600">Order date</label>
+            <input type="text" id="docDate" value="{{ doc.data.document_date if doc.data else '' }}" class="w-full rounded-md border border-slate-300 p-2 text-slate-900 focus:border-slate-500 focus:outline-none">
+          </div>
+          <div>
+            <label class="mb-1 block font-semibold text-slate-600">Payment terms</label>
+            <input type="text" id="paymentTerms" value="{{ doc.data.payment_terms if doc.data else 'Net 30' }}" class="w-full rounded-md border border-slate-300 p-2 text-slate-900 focus:border-slate-500 focus:outline-none">
+          </div>
+        </div>
+
+        <div class="mb-6 grid grid-cols-1 gap-4 text-xs sm:grid-cols-2">
+          <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <span class="mb-2 block text-[10px] font-bold uppercase tracking-[0.12em] text-slate-700">Supplier / vendor</span>
+            <input type="text" id="vendorName" placeholder="Vendor name" value="{{ doc.data.vendor.name if doc.data and doc.data.vendor else '' }}" class="mb-2 w-full rounded p-1.5 border border-slate-300 text-slate-900 focus:border-slate-500 focus:outline-none">
+            <input type="text" id="vendorTaxId" placeholder="Tax / VAT ID" value="{{ doc.data.vendor.tax_id if doc.data and doc.data.vendor and doc.data.vendor.tax_id else '' }}" class="mb-2 w-full rounded p-1.5 border border-slate-300 font-mono text-[11px] text-slate-900 focus:border-slate-500 focus:outline-none">
+            <input type="text" id="vendorAddress" placeholder="Vendor address" value="{{ doc.data.vendor.address if doc.data and doc.data.vendor and doc.data.vendor.address else '' }}" class="w-full rounded p-1.5 border border-slate-300 text-[11px] text-slate-900 focus:border-slate-500 focus:outline-none">
+          </div>
+
+          <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <span class="mb-2 block text-[10px] font-bold uppercase tracking-[0.12em] text-slate-700">Buyer / customer</span>
+            <input type="text" id="buyerCompany" placeholder="Buyer company" value="{{ doc.data.buyer.company if doc.data and doc.data.buyer else '' }}" class="mb-2 w-full rounded p-1.5 border border-slate-300 text-slate-900 focus:border-slate-500 focus:outline-none">
+            <input type="text" id="buyerContact" placeholder="Contact name" value="{{ doc.data.buyer.name if doc.data and doc.data.buyer and doc.data.buyer.name else '' }}" class="mb-2 w-full rounded p-1.5 border border-slate-300 text-slate-900 focus:border-slate-500 focus:outline-none">
+            <input type="text" id="shippingAddress" placeholder="Shipping address" value="{{ doc.data.buyer.shipping_address if doc.data and doc.data.buyer and doc.data.buyer.shipping_address else '' }}" class="w-full rounded p-1.5 border border-slate-300 text-[11px] text-slate-900 focus:border-slate-500 focus:outline-none">
+          </div>
+        </div>
+
+        <div class="mb-6">
+          <div class="mb-2 flex items-center justify-between">
+            <h3 class="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-700">Line items</h3>
+            <button onclick="addLineItem()" class="text-[11px] font-semibold text-slate-700 hover:text-slate-900">+ Add item</button>
+          </div>
+
+          <div class="overflow-x-auto rounded-lg border border-slate-200">
+            <table class="min-w-full divide-y divide-slate-200 text-xs">
+              <thead class="bg-slate-50 font-semibold text-slate-600">
+                <tr>
+                  <th class="w-8 px-2 py-2 text-center">#</th>
+                  <th class="w-24 px-2 py-2">SKU</th>
+                  <th class="px-2 py-2">Description</th>
+                  <th class="w-16 px-2 py-2 text-right">Qty</th>
+                  <th class="w-20 px-2 py-2 text-right">Unit $</th>
+                  <th class="w-24 px-2 py-2 text-right">Total $</th>
+                  <th class="w-8 px-2 py-2 text-center"></th>
+                </tr>
+              </thead>
+              <tbody id="lineItemsTableBody" class="divide-y divide-slate-100 font-mono">
+                {% if doc.data and doc.data.line_items %}
+                  {% for item in doc.data.line_items %}
+                  <tr class="item-row hover:bg-slate-50">
+                    <td class="line-num px-2 py-1.5 text-center text-slate-400">{{ item.line_no }}</td>
+                    <td class="px-2 py-1.5"><input type="text" class="sku-input w-full rounded border border-transparent p-1 text-xs text-slate-900 hover:border-slate-300 focus:border-slate-500 focus:outline-none" value="{{ item.sku }}"></td>
+                    <td class="px-2 py-1.5"><input type="text" class="desc-input w-full rounded border border-transparent p-1 text-xs text-slate-900 hover:border-slate-300 focus:border-slate-500 focus:outline-none" value="{{ item.description }}"></td>
+                    <td class="px-2 py-1.5 text-right"><input type="number" step="any" oninput="recalcRow(this)" class="qty-input w-16 rounded border border-transparent p-1 text-right text-xs text-slate-900 hover:border-slate-300 focus:border-slate-500 focus:outline-none" value="{{ item.quantity }}"></td>
+                    <td class="px-2 py-1.5 text-right"><input type="number" step="0.01" oninput="recalcRow(this)" class="price-input w-20 rounded border border-transparent p-1 text-right text-xs text-slate-900 hover:border-slate-300 focus:border-slate-500 focus:outline-none" value="{{ '%.2f'|format(item.unit_price) }}"></td>
+                    <td class="total-cell px-2 py-1.5 text-right font-semibold text-slate-800">{{ item.total }}</td>
+                    <td class="px-2 py-1.5 text-center"><button class="remove-row-btn text-slate-400 hover:text-slate-700" type="button"><span class="material-symbols-outlined" style="font-size:16px;">close</span></button></td>
+                  </tr>
+                  {% endfor %}
+                {% endif %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="bg-slate-50 p-4 rounded-lg border border-slate-200">
+          <div class="max-w-xs ml-auto space-y-2 text-xs">
+            <div class="flex justify-between items-center text-slate-600">
+              <span>Subtotal:</span>
+              <div class="flex items-center font-mono">
+                <span>$</span>
+                <input type="number" step="0.01" id="subtotalInput" class="w-24 text-right p-1 border border-slate-300 rounded font-semibold" value="{{ '%.2f'|format(doc.data.summary.subtotal) if doc.data and doc.data.summary else '0.00' }}">
+              </div>
+            </div>
+
+            <div class="flex justify-between items-center text-slate-600">
+              <span>Tax Amount:</span>
+              <div class="flex items-center font-mono">
+                <span>$</span>
+                <input type="number" step="0.01" id="taxInput" oninput="recalcGrandTotal()" class="w-24 text-right p-1 border border-slate-300 rounded" value="{{ '%.2f'|format(doc.data.summary.tax_amount) if doc.data and doc.data.summary else '0.00' }}">
+              </div>
+            </div>
+
+            <div class="flex justify-between items-center text-slate-600">
+              <span>Shipping & Handling:</span>
+              <div class="flex items-center font-mono">
+                <span>$</span>
+                <input type="number" step="0.01" id="shippingInput" oninput="recalcGrandTotal()" class="w-24 text-right p-1 border border-slate-300 rounded" value="{{ '%.2f'|format(doc.data.summary.shipping_amount) if doc.data and doc.data.summary else '0.00' }}">
+              </div>
+            </div>
+
+            <div class="flex justify-between items-center text-slate-600">
+              <span>Discount:</span>
+              <div class="flex items-center font-mono">
+                <span>-$</span>
+                <input type="number" step="0.01" id="discountInput" oninput="recalcGrandTotal()" class="w-24 text-right p-1 border border-slate-300 rounded" value="{{ '%.2f'|format(doc.data.summary.discount_amount) if doc.data and doc.data.summary else '0.00' }}">
+              </div>
+            </div>
+
+            <div class="pt-2 border-t border-slate-300 flex justify-between items-center font-bold text-slate-900 text-sm">
+              <span>Grand Total:</span>
+              <div class="flex items-center font-mono text-slate-900 font-extrabold text-base">
+                <span>$</span>
+                <input type="number" step="0.01" id="grandTotalInput" class="w-28 text-right p-1 border-2 border-slate-400 rounded font-mono text-slate-900 font-bold" value="{{ '%.2f'|format(doc.data.summary.grand_total) if doc.data and doc.data.summary else '0.00' }}">
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const docId = "{{ doc.id }}";
+let parsedDoc = {{ doc.parsed_json|safe if doc.parsed_json else '{}' }};
+
+function recalcRow(el) {
+  const row = el.closest(".item-row");
+  const qty = parseFloat(row.querySelector(".qty-input").value) || 0;
+  const price = parseFloat(row.querySelector(".price-input").value) || 0;
+  const lineTotal = (qty * price).toFixed(2);
+  row.querySelector(".total-cell").textContent = lineTotal;
+  recalcSubtotal();
+}
+
+function recalcSubtotal() {
+  let subtotal = 0;
+  document.querySelectorAll(".total-cell").forEach(cell => {
+    subtotal += parseFloat(cell.textContent) || 0;
+  });
+  document.getElementById("subtotalInput").value = subtotal.toFixed(2);
+  recalcGrandTotal();
+}
+
+function recalcGrandTotal() {
+  const subtotal = parseFloat(document.getElementById("subtotalInput").value) || 0;
+  const tax = parseFloat(document.getElementById("taxInput").value) || 0;
+  const shipping = parseFloat(document.getElementById("shippingInput").value) || 0;
+  const discount = parseFloat(document.getElementById("discountInput").value) || 0;
+  const grandTotal = (subtotal + tax + shipping - discount).toFixed(2);
+  document.getElementById("grandTotalInput").value = grandTotal;
+}
+
+function addLineItem() {
+  const tbody = document.getElementById("lineItemsTableBody");
+  const count = tbody.querySelectorAll(".item-row").length + 1;
+  const tr = document.createElement("tr");
+  tr.className = "item-row hover:bg-slate-50";
+  tr.innerHTML = `
+    <td class="px-2 py-1.5 text-center text-slate-400 line-num">${count}</td>
+    <td class="px-2 py-1.5"><input type="text" class="sku-input w-full p-1 border rounded text-xs" value="SKU-NEW"></td>
+    <td class="px-2 py-1.5"><input type="text" class="desc-input w-full p-1 border rounded text-xs" value="New Item Description"></td>
+    <td class="px-2 py-1.5 text-right"><input type="number" step="any" oninput="recalcRow(this)" class="qty-input w-16 p-1 border rounded text-right text-xs" value="1"></td>
+    <td class="px-2 py-1.5 text-right"><input type="number" step="0.01" oninput="recalcRow(this)" class="price-input w-20 p-1 border rounded text-right text-xs" value="0.00"></td>
+    <td class="px-2 py-1.5 text-right font-bold total-cell">0.00</td>
+    <td class="px-2 py-1.5 text-center"><button onclick="removeLineItem(this)" class="text-slate-300 hover:text-slate-700 font-sans font-bold"><span class="material-symbols-outlined" style="font-size:16px;">close</span></button></td>
+  `;
+  tbody.appendChild(tr);
+}
+
+function removeLineItem(btn) {
+  btn.closest(".item-row").remove();
+  recalcSubtotal();
+}
+
+async function saveAndRevalidate() {
+  const items = [];
+  document.querySelectorAll(".item-row").forEach((row, idx) => {
+    items.push({
+      line_no: idx + 1,
+      sku: row.querySelector(".sku-input").value,
+      description: row.querySelector(".desc-input").value,
+      quantity: parseFloat(row.querySelector(".qty-input").value) || 0,
+      unit_price: parseFloat(row.querySelector(".price-input").value) || 0,
+      line_total: parseFloat(row.querySelector(".total-cell").textContent) || 0
+    });
+  });
+
+  const payload = {
+    document_type: "PURCHASE_ORDER",
+    document_number: document.getElementById("docNumber").value,
+    document_date: document.getElementById("docDate").value,
+    payment_terms: document.getElementById("paymentTerms").value,
+    vendor: {
+      name: document.getElementById("vendorName").value,
+      tax_id: document.getElementById("vendorTaxId").value,
+      address: document.getElementById("vendorAddress").value
+    },
+    buyer: {
+      company: document.getElementById("buyerCompany").value,
+      name: document.getElementById("buyerContact").value,
+      shipping_address: document.getElementById("shippingAddress").value
+    },
+    line_items: items,
+    summary: {
+      currency: "USD",
+      subtotal: parseFloat(document.getElementById("subtotalInput").value) || 0,
+      tax_amount: parseFloat(document.getElementById("taxInput").value) || 0,
+      shipping_amount: parseFloat(document.getElementById("shippingInput").value) || 0,
+      discount_amount: parseFloat(document.getElementById("discountInput").value) || 0,
+      grand_total: parseFloat(document.getElementById("grandTotalInput").value) || 0
+    }
+  };
+
+  try {
+    const res = await fetch(`/api/documents/${docId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    const result = await res.json();
+    alert("Saved & Re-verified! Confidence: " + Math.round((result.verification.confidence_score * 100)) + "%");
+    window.location.reload();
+  } catch (e) {
+    alert("Error saving: " + e.message);
+  }
+}
+
+async function dispatchWebhook() {
+  const btn = document.getElementById("dispatchBtn");
+  btn.disabled = true;
+  btn.innerText = "Dispatching...";
+
+  try {
+    const res = await fetch(`/api/documents/${docId}/dispatch`, { method: "POST" });
+    const result = await res.json();
+    if (result.success) {
+      alert(`Webhook Delivered! (Status: ${result.status_code}, ${result.duration_ms}ms)`);
+    } else {
+      alert(`Webhook Dispatch Failed: ${result.response || 'Check webhook URL'}`);
+    }
+    window.location.reload();
+  } catch (e) {
+    alert("Dispatch error: " + e.message);
+    btn.disabled = false;
+    btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:14px;">send</span> Dispatch Webhook';
+  }
+}
+
+function downloadJson() {
+  const blob = new Blob([JSON.stringify(parsedDoc, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `doc_${docId.substring(0,8)}.json`;
+  a.click();
+}
+</script>
+{% endblock %}

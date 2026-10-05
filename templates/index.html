@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard | DocFlow - B2B Document Parser{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8">
+  <div class="md:flex md:items-center md:justify-between mb-8">
+    <div class="min-w-0 flex-1">
+      <h1 class="text-2xl font-bold leading-7 text-slate-900 sm:truncate sm:text-3xl">Inbound Document Stream</h1>
+      <p class="mt-2 text-sm text-slate-500">Incoming purchase orders and invoices are parsed, validated for math integrity, and routed into your downstream workflow.</p>
+    </div>
+    <div class="mt-4 flex flex-wrap items-center gap-3 md:mt-0">
+      <button id="simulateEmailBtn" onclick="simulateInboundEmail()" class="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:bg-slate-50">
+        <span class="material-symbols-outlined">mail</span>
+        Simulate Inbound Email
+      </button>
+      <button onclick="document.getElementById('fileUploadInput').click()" class="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-slate-700">
+        <span class="material-symbols-outlined">upload_file</span>
+        Upload Document
+      </button>
+      <input type="file" id="fileUploadInput" multiple accept=".pdf,.png,.jpg,.jpeg" class="hidden" onchange="handleFileUpload(event)">
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+    <div class="card-shell p-5">
+      <div class="flex items-center justify-between">
+        <span class="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">Total Documents</span>
+        <span class="material-symbols-outlined text-slate-400">description</span>
+      </div>
+      <p class="mt-3 text-3xl font-extrabold text-slate-900">{{ stats.total_documents }}</p>
+      <span class="mt-1 block text-xs text-slate-500">Inbound orders and invoices</span>
+    </div>
+
+    <div class="card-shell p-5">
+      <div class="flex items-center justify-between">
+        <span class="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-600">Math Verified</span>
+        <span class="material-symbols-outlined text-slate-500">check_circle</span>
+      </div>
+      <p class="mt-3 text-3xl font-extrabold text-slate-900">{{ stats.verified_count }}</p>
+      <span class="mt-1 block text-xs text-slate-500">Passed arithmetic checks</span>
+    </div>
+
+    <div class="card-shell p-5">
+      <div class="flex items-center justify-between">
+        <span class="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-600">Needs Review</span>
+        <span class="material-symbols-outlined text-slate-500">warning</span>
+      </div>
+      <p class="mt-3 text-3xl font-extrabold text-slate-900">{{ stats.review_count }}</p>
+      <span class="mt-1 block text-xs text-slate-500">Discrepancies or missing fields</span>
+    </div>
+
+    <div class="card-shell p-5">
+      <div class="flex items-center justify-between">
+        <span class="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-600">Webhooks Delivered</span>
+        <span class="material-symbols-outlined text-slate-500">bolt</span>
+      </div>
+      <p class="mt-3 text-3xl font-extrabold text-slate-900">{{ stats.delivered_webhooks }}</p>
+      <span class="mt-1 block text-xs text-slate-500">Pushed to ERP or webhook endpoint</span>
+    </div>
+  </div>
+
+  <div id="dropZone" class="mb-8 cursor-pointer rounded-2xl border-2 border-dashed border-slate-300 bg-white p-8 text-center transition-colors hover:border-slate-400 hover:bg-slate-50" onclick="document.getElementById('fileUploadInput').click()" ondragover="event.preventDefault(); this.classList.add('border-slate-500', 'bg-slate-50');" ondragleave="this.classList.remove('border-slate-500', 'bg-slate-50');" ondrop="handleFileDrop(event)">
+    <div class="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-500">
+      <span class="material-symbols-outlined">drive_folder_upload</span>
+    </div>
+    <h3 class="text-sm font-semibold text-slate-800">Drop purchase orders or invoices here</h3>
+    <p class="mt-1 text-xs text-slate-500">Supports PDF, PNG, and JPG files up to 25MB.</p>
+    <div id="uploadFeedback" class="mt-3 hidden inline-block rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700"></div>
+  </div>
+
+  <div class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+    <div class="flex flex-col gap-4 border-b border-slate-200 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
+      <h2 class="text-base font-semibold text-slate-800">Recent document queue</h2>
+      <div class="flex items-center gap-2 text-xs text-slate-500">
+        <span>Filter:</span>
+        <a href="/" class="rounded-md bg-slate-100 px-2.5 py-1 text-slate-700">All</a>
+        <a href="/?status=VERIFIED" class="rounded-md border border-slate-200 px-2.5 py-1 text-slate-600">Verified</a>
+        <a href="/?status=REVIEW_REQUIRED" class="rounded-md border border-slate-200 px-2.5 py-1 text-slate-600">Needs Review</a>
+      </div>
+    </div>
+
+    {% if docs %}
+      <div class="grid gap-4 p-4 md:grid-cols-2 xl:grid-cols-3">
+        {% for doc in docs %}
+          <div class="rounded-xl border border-slate-200 bg-slate-50 p-4 shadow-sm transition-colors hover:bg-white">
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0">
+                <p class="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">{{ doc.source }}</p>
+                <a href="/documents/{{ doc.id }}" class="mt-2 block truncate text-sm font-semibold text-slate-900 hover:text-slate-600">
+                  {{ doc.data.document_number if doc.data and doc.data.document_number else doc.original_filename }}
+                </a>
+              </div>
+              <span class="inline-flex items-center rounded-full border border-slate-200 bg-white px-2 py-1 text-[10px] font-medium text-slate-700">
+                {{ doc.status }}
+              </span>
+            </div>
+
+            <div class="mt-4 space-y-2 text-xs text-slate-500">
+              <div class="flex items-center justify-between gap-3">
+                <span>Vendor</span>
+                <span class="font-medium text-slate-700">{{ doc.data.vendor.name if doc.data and doc.data.vendor and doc.data.vendor.name else '—' }}</span>
+              </div>
+              <div class="flex items-center justify-between gap-3">
+                <span>Total</span>
+                {% if doc.data and doc.data.summary %}
+                  <span class="font-medium text-slate-800">${{ "%.2f"|format(doc.data.summary.grand_total) }}</span>
+                {% else %}
+                  <span>Pending</span>
+                {% endif %}
+              </div>
+              <div class="flex items-center justify-between gap-3">
+                <span>Webhook</span>
+                <span class="font-medium text-slate-700">{{ doc.webhook_status }}</span>
+              </div>
+            </div>
+
+            <div class="mt-4 flex items-center justify-end gap-2">
+              <a href="/documents/{{ doc.id }}" class="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100">
+                <span class="material-symbols-outlined" style="font-size:14px;">visibility</span>
+                Inspect
+              </a>
+              <button onclick="deleteDoc('{{ doc.id }}')" class="inline-flex h-8 w-8 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-slate-200 hover:text-slate-700" aria-label="Delete document">
+                <span class="material-symbols-outlined" style="font-size:18px;">delete</span>
+              </button>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="px-6 py-12 text-center text-sm text-slate-400">No documents processed yet. Drop a PDF purchase order above or simulate inbound email to test the flow.</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function handleFileUpload(event) {
+  const files = event.target.files;
+  if (!files || files.length === 0) return;
+
+  const formData = new FormData();
+  for (let i = 0; i < files.length; i++) {
+    formData.append("files", files[i]);
+  }
+
+  const feedback = document.getElementById("uploadFeedback");
+  feedback.classList.remove("hidden");
+  feedback.innerText = `Uploading and parsing ${files.length} document(s)...`;
+
+  try {
+    const res = await fetch("/api/documents/upload", {
+      method: "POST",
+      body: formData
+    });
+    await res.json();
+    feedback.innerText = "Uploaded! Reloading stream...";
+    setTimeout(() => window.location.reload(), 1200);
+  } catch (err) {
+    alert("Upload failed: " + err.message);
+    feedback.classList.add("hidden");
+  }
+}
+
+function handleFileDrop(e) {
+  e.preventDefault();
+  const dt = e.dataTransfer;
+  const files = dt.files;
+  if (files.length > 0) {
+    document.getElementById("fileUploadInput").files = files;
+    handleFileUpload({ target: { files: files } });
+  }
+}
+
+async function simulateInboundEmail() {
+  const btn = document.getElementById("simulateEmailBtn");
+  btn.disabled = true;
+  btn.innerHTML = '<span class="material-symbols-outlined">sync</span> Receiving email...';
+
+  try {
+    await fetch("/api/inbound/test-mock", { method: "POST" });
+    btn.innerHTML = '<span class="material-symbols-outlined">check</span> Received!';
+    setTimeout(() => window.location.reload(), 1000);
+  } catch (e) {
+    alert("Error simulating inbound email: " + e.message);
+    btn.disabled = false;
+    btn.innerHTML = '<span class="material-symbols-outlined">mail</span> Simulate Inbound Email';
+  }
+}
+
+async function deleteDoc(id) {
+  if (!confirm("Are you sure you want to delete this document?")) return;
+  try {
+    await fetch(`/api/documents/${id}`, { method: "DELETE" });
+    window.location.reload();
+  } catch (e) {
+    alert("Error deleting document: " + e.message);
+  }
+}
+</script>
+{% endblock %}
