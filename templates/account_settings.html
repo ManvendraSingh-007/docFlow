@@ -1,0 +1,196 @@
+{% extends "base.html" %}
+
+{% block title %}Settings | DocFlow{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-4xl px-4 pt-8 sm:px-6 lg:px-8">
+  <header class="mb-8"><h1 class="text-2xl font-bold text-slate-900">Settings</h1></header>
+  <div id="settingsMessage" class="mb-5 hidden rounded-md border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700" role="status"></div>
+
+  <section class="border-b border-slate-200 pb-8">
+    <h2 class="text-base font-semibold text-slate-900">Account</h2>
+    <div class="mt-5 grid gap-4 sm:grid-cols-2">
+      <label class="text-sm font-medium text-slate-700">Full name<input id="profileName" class="mt-1.5 w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-normal text-slate-900"></label>
+      <label class="text-sm font-medium text-slate-700">Email<input id="profileEmail" type="email" class="mt-1.5 w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-normal text-slate-900"></label>
+      <label class="text-sm font-medium text-slate-700 sm:col-span-2">Company<input id="companyName" class="mt-1.5 w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-normal text-slate-900"></label>
+    </div>
+    <button onclick="saveProfile()" class="mt-4 rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800">Save account</button>
+  </section>
+
+  <section class="border-b border-slate-200 py-8">
+    <h2 class="text-base font-semibold text-slate-900">Password</h2>
+    <div class="mt-5 grid gap-4 sm:grid-cols-2">
+      <label class="text-sm font-medium text-slate-700">Current password<input id="currentPassword" type="password" autocomplete="current-password" class="mt-1.5 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"></label>
+      <label class="text-sm font-medium text-slate-700">New password<input id="newPassword" type="password" minlength="12" autocomplete="new-password" class="mt-1.5 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"></label>
+    </div>
+    <button onclick="savePassword()" class="mt-4 rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Update password</button>
+  </section>
+
+  <section class="border-b border-slate-200 py-8">
+    <h2 class="text-base font-semibold text-slate-900">Invoice extraction</h2>
+    <div class="mt-5 space-y-4">
+      <label class="block text-sm font-medium text-slate-700">Provider
+        <select id="defaultProvider" class="mt-1.5 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-900">
+          <option value="auto">Automatic (AI provider, then local parser)</option>
+          <option value="gemini">Google Gemini</option>
+          <option value="openai">OpenAI</option>
+          <option value="heuristic">Local PDF parser</option>
+        </select>
+      </label>
+      <div class="grid gap-4 sm:grid-cols-2">
+        <label class="text-sm font-medium text-slate-700">Gemini API key<input id="geminiKey" type="password" autocomplete="off" placeholder="Leave blank to keep saved key" class="mt-1.5 w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-normal"></label>
+        <label class="text-sm font-medium text-slate-700">OpenAI API key<input id="openaiKey" type="password" autocomplete="off" placeholder="Leave blank to keep saved key" class="mt-1.5 w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-normal"></label>
+      </div>
+      <p id="providerStatus" class="text-xs text-slate-500"></p>
+      <button onclick="saveSettings()" class="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800">Save extraction settings</button>
+    </div>
+  </section>
+
+  <section class="border-b border-slate-200 py-8">
+    <div class="flex flex-wrap items-start justify-between gap-3">
+      <div><h2 class="text-base font-semibold text-slate-900">Email intake</h2><p id="inboundTokenStatus" class="mt-1 text-sm text-slate-500"></p></div>
+      <button onclick="rotateInboundToken()" class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Generate new token</button>
+    </div>
+    <input id="inboundToken" readonly class="mt-4 hidden w-full rounded-md border border-slate-300 bg-slate-50 px-3 py-2 font-mono text-sm">
+    <p class="mt-2 text-xs text-slate-500">Use this token in the <code>X-DocFlow-Inbound-Token</code> header for inbound email requests.</p>
+  </section>
+
+  <section class="py-8">
+    <h2 class="text-base font-semibold text-slate-900">Webhook delivery</h2>
+    <div class="mt-5 space-y-4">
+      <label class="block text-sm font-medium text-slate-700">Destination URL<input id="webhookUrl" type="url" placeholder="https://" class="mt-1.5 w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-normal"></label>
+      <label class="block text-sm font-medium text-slate-700">Signing secret<input id="webhookSecret" type="password" autocomplete="new-password" placeholder="Leave blank to keep saved secret" class="mt-1.5 w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-normal"></label>
+      <label class="flex items-center gap-2 text-sm text-slate-700"><input id="autoDispatch" type="checkbox" class="h-4 w-4 rounded border-slate-300">Send invoices automatically when totals match</label>
+      <div class="flex flex-wrap gap-3">
+        <button onclick="saveSettings()" class="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800">Save webhook settings</button>
+        <button onclick="testWebhook()" class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Send test</button>
+      </div>
+    </div>
+  </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
+
+function showMessage(message) {
+  const element = document.getElementById("settingsMessage");
+  element.textContent = message;
+  element.classList.remove("hidden");
+}
+
+async function requestJson(url, method, payload) {
+  const response = await fetch(url, {
+    method,
+    headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
+    body: payload ? JSON.stringify(payload) : undefined
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.detail || "Request failed");
+  return data;
+}
+
+async function loadSettings() {
+  try {
+    const response = await fetch("/api/settings");
+    const data = await response.json();
+    document.getElementById("profileName").value = data.full_name || "";
+    document.getElementById("profileEmail").value = data.email || "";
+    document.getElementById("companyName").value = data.company_name || "";
+    document.getElementById("webhookUrl").value = data.webhook_url || "";
+    document.getElementById("autoDispatch").checked = data.auto_dispatch_on_verified;
+    document.getElementById("defaultProvider").value = data.default_provider || "auto";
+    const providers = [];
+    if (data.gemini_api_key_configured) providers.push("Gemini");
+    if (data.openai_api_key_configured) providers.push("OpenAI");
+    document.getElementById("providerStatus").textContent = providers.length ? `Connected: ${providers.join(", ")}` : "No AI provider key saved. The local parser will be used.";
+    document.getElementById("inboundTokenStatus").textContent = data.inbound_token_configured ? "A token is active." : "No token created.";
+  } catch (error) {
+    showMessage(error.message);
+  }
+}
+
+async function saveSettings() {
+  const payload = {
+    webhook_url: document.getElementById("webhookUrl").value,
+    default_provider: document.getElementById("defaultProvider").value,
+    auto_dispatch_on_verified: document.getElementById("autoDispatch").checked
+  };
+  const gemini = document.getElementById("geminiKey").value;
+  const openai = document.getElementById("openaiKey").value;
+  const secret = document.getElementById("webhookSecret").value;
+  if (gemini) payload.gemini_api_key = gemini;
+  if (openai) payload.openai_api_key = openai;
+  if (secret) payload.webhook_secret = secret;
+  try {
+    await requestJson("/api/settings", "POST", payload);
+    document.getElementById("geminiKey").value = "";
+    document.getElementById("openaiKey").value = "";
+    document.getElementById("webhookSecret").value = "";
+    showMessage("Settings saved.");
+    loadSettings();
+  } catch (error) {
+    showMessage(error.message);
+  }
+}
+
+async function saveProfile() {
+  try {
+    await requestJson("/api/settings/profile", "PUT", {
+      full_name: document.getElementById("profileName").value,
+      email: document.getElementById("profileEmail").value,
+      company_name: document.getElementById("companyName").value
+    });
+    showMessage("Account details saved.");
+  } catch (error) {
+    showMessage(error.message);
+  }
+}
+
+async function savePassword() {
+  try {
+    await requestJson("/api/settings/password", "PUT", {
+      current_password: document.getElementById("currentPassword").value,
+      new_password: document.getElementById("newPassword").value
+    });
+    document.getElementById("currentPassword").value = "";
+    document.getElementById("newPassword").value = "";
+    showMessage("Password updated.");
+  } catch (error) {
+    showMessage(error.message);
+  }
+}
+
+async function rotateInboundToken() {
+  if (!confirm("Replace the current email intake token? Existing integrations will stop working.")) return;
+  try {
+    const data = await requestJson("/api/settings/inbound-token/rotate", "POST");
+    const input = document.getElementById("inboundToken");
+    input.value = data.inbound_token;
+    input.classList.remove("hidden");
+    document.getElementById("inboundTokenStatus").textContent = "Copy the new token now. It will not be shown again.";
+  } catch (error) {
+    showMessage(error.message);
+  }
+}
+
+async function testWebhook() {
+  const url = document.getElementById("webhookUrl").value;
+  if (!url) return showMessage("Enter a destination URL first.");
+  try {
+    const response = await fetch(`/api/settings/test-webhook?url=${encodeURIComponent(url)}`, {
+      method: "POST",
+      headers: { "X-CSRF-Token": csrfToken }
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.detail || "Request failed");
+    showMessage(data.success ? `Test delivered: HTTP ${data.status_code} in ${data.duration_ms}ms.` : `Test failed: ${data.response || "Connection refused"}`);
+  } catch (error) {
+    showMessage(error.message);
+  }
+}
+
+document.addEventListener("DOMContentLoaded", loadSettings);
+</script>
+{% endblock %}
