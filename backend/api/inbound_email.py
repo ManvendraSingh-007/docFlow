@@ -1,12 +1,23 @@
 import uuid
 from typing import List
-from fastapi import APIRouter, Request, BackgroundTasks, UploadFile, File
+from fastapi import APIRouter, Request, BackgroundTasks, UploadFile, HTTPException, Depends
 from backend.config import settings
-from backend.database import DocumentRepository
+from backend.database import DocumentRepository, UserRepository
+from backend.auth import current_user
 from backend.services.email_receiver import EmailReceiverService
 from backend.api.documents import process_and_dispatch
 
 router = APIRouter(prefix="/api/inbound", tags=["inbound_email"])
+
+
+def _token_user(request: Request, token: str = ""):
+    authorization = request.headers.get("authorization", "")
+    bearer_token = authorization[7:].strip() if authorization.lower().startswith("bearer ") else ""
+    supplied = token or request.headers.get("x-docflow-inbound-token", "") or bearer_token
+    user = UserRepository.get_by_inbound_token(supplied) if supplied else None
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid inbound token")
+    return user
 
 @router.post("/postmark")
 async def postmark_inbound_webhook(request: Request, background_tasks: BackgroundTasks):
@@ -14,6 +25,7 @@ async def postmark_inbound_webhook(request: Request, background_tasks: Backgroun
     Receives inbound email webhook from Postmark Inbound.
     Extracts attachments (PDFs/images), saves and processes them.
     """
+    user = _token_user(request)
     payload = await request.json()
     message = await EmailReceiverService.parse_postmark(payload)
     
@@ -25,6 +37,11 @@ async def postmark_inbound_webhook(request: Request, background_tasks: Backgroun
         saved_path = EmailReceiverService.save_attachment(att)
         doc_id = str(uuid.uuid4())
         ext = saved_path.suffix.replace(".", "").upper()
+        user_dir = settings.uploads_dir / user["id"]
+        user_dir.mkdir(parents=True, exist_ok=True)
+        private_path = user_dir / f"{doc_id}{saved_path.suffix.lower()}"
+        saved_path.replace(private_path)
+        saved_path = private_path
 
         DocumentRepository.create(
             doc_id=doc_id,
@@ -34,10 +51,11 @@ async def postmark_inbound_webhook(request: Request, background_tasks: Backgroun
             file_size=len(att.data),
             file_type=ext,
             source="email_inbound",
-            sender_email=message.sender
+            sender_email=message.sender,
+            user_id=user["id"],
         )
 
-        background_tasks.add_task(process_and_dispatch, doc_id, saved_path, att.content_type)
+        background_tasks.add_task(process_and_dispatch, doc_id, saved_path, att.content_type, user["id"])
         processed.append({"id": doc_id, "filename": att.filename})
 
     return {"status": "success", "processed_attachments": len(processed), "documents": processed}
@@ -49,6 +67,7 @@ async def sendgrid_inbound_webhook(request: Request, background_tasks: Backgroun
     """
     form = await request.form()
     form_dict = dict(form)
+    user = _token_user(request, str(form_dict.get("docflow_token", "")))
     
     # Collect files
     files: List[UploadFile] = []
@@ -66,6 +85,11 @@ async def sendgrid_inbound_webhook(request: Request, background_tasks: Backgroun
         saved_path = EmailReceiverService.save_attachment(att)
         doc_id = str(uuid.uuid4())
         ext = saved_path.suffix.replace(".", "").upper()
+        user_dir = settings.uploads_dir / user["id"]
+        user_dir.mkdir(parents=True, exist_ok=True)
+        private_path = user_dir / f"{doc_id}{saved_path.suffix.lower()}"
+        saved_path.replace(private_path)
+        saved_path = private_path
 
         DocumentRepository.create(
             doc_id=doc_id,
@@ -75,16 +99,17 @@ async def sendgrid_inbound_webhook(request: Request, background_tasks: Backgroun
             file_size=len(att.data),
             file_type=ext,
             source="email_inbound",
-            sender_email=message.sender
+            sender_email=message.sender,
+            user_id=user["id"],
         )
 
-        background_tasks.add_task(process_and_dispatch, doc_id, saved_path, att.content_type)
+        background_tasks.add_task(process_and_dispatch, doc_id, saved_path, att.content_type, user["id"])
         processed.append({"id": doc_id, "filename": att.filename})
 
     return {"status": "success", "processed_attachments": len(processed), "documents": processed}
 
 @router.post("/test-mock")
-async def test_mock_email(background_tasks: BackgroundTasks):
+async def test_mock_email(background_tasks: BackgroundTasks, user: dict = Depends(current_user)):
     """
     Simulates receiving an inbound email with a sample supplier purchase order.
     Useful for testing the email flow without setting up MX records.
@@ -93,8 +118,11 @@ async def test_mock_email(background_tasks: BackgroundTasks):
     from backend.services.email_receiver import InboundAttachment
     att = InboundAttachment(filename="PO_Vanguard_Testing.pdf", content_type="application/pdf", data=sample_content)
     
-    saved_path = EmailReceiverService.save_attachment(att)
     doc_id = str(uuid.uuid4())
+    user_dir = settings.uploads_dir / user["id"]
+    user_dir.mkdir(parents=True, exist_ok=True)
+    saved_path = user_dir / f"{doc_id}.pdf"
+    saved_path.write_bytes(sample_content)
 
     DocumentRepository.create(
         doc_id=doc_id,
@@ -104,10 +132,11 @@ async def test_mock_email(background_tasks: BackgroundTasks):
         file_size=len(sample_content),
         file_type="PDF",
         source="email_inbound",
-        sender_email="supplier-orders@acme-parts.com"
+        sender_email="supplier-orders@acme-parts.com",
+        user_id=user["id"],
     )
 
-    background_tasks.add_task(process_and_dispatch, doc_id, saved_path, "application/pdf")
+    background_tasks.add_task(process_and_dispatch, doc_id, saved_path, "application/pdf", user["id"])
     return {
         "status": "success",
         "message": "Mock inbound email received and queued for processing.",

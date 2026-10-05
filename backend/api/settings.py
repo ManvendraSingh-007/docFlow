@@ -1,80 +1,90 @@
-import os
-from pathlib import Path
-from pydantic import BaseModel
+import re
+from pydantic import BaseModel, Field
 from typing import Optional
-from fastapi import APIRouter, HTTPException
-from backend.config import settings, reload_settings, BASE_DIR
+from fastapi import APIRouter, HTTPException, Depends
+from backend.auth import current_user
+from backend.database import AccountSettingsRepository, UserRepository
+from backend.security import hash_password, verify_password
 from backend.services.webhook_dispatcher import WebhookDispatcher
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
 class SettingsUpdatePayload(BaseModel):
-    default_webhook_url: Optional[str] = None
+    webhook_url: Optional[str] = None
     webhook_secret: Optional[str] = None
-    default_provider: Optional[str] = None # auto, gemini, openai, heuristic
+    default_provider: Optional[str] = None
     gemini_api_key: Optional[str] = None
     openai_api_key: Optional[str] = None
     auto_dispatch_on_verified: Optional[bool] = None
 
-def mask_key(k: str) -> str:
-    if not k or len(k) < 8:
-        return "********" if k else ""
-    return f"{k[:4]}...{k[-4:]}"
-
 @router.get("")
-def get_current_settings():
+def get_current_settings(user: dict = Depends(current_user)):
+    account = AccountSettingsRepository.get(user["id"])
     return {
-        "app_name": settings.app_name,
-        "app_version": settings.app_version,
-        "default_webhook_url": settings.default_webhook_url,
-        "webhook_secret_set": bool(settings.webhook_secret),
-        "default_provider": settings.default_provider,
-        "auto_dispatch_on_verified": settings.auto_dispatch_on_verified,
-        "gemini_api_key_configured": bool(settings.gemini_api_key),
-        "gemini_api_key_preview": mask_key(settings.gemini_api_key),
-        "openai_api_key_configured": bool(settings.openai_api_key),
-        "openai_api_key_preview": mask_key(settings.openai_api_key),
+        "webhook_url": account.get("webhook_url", ""),
+        "webhook_secret_configured": bool(account.get("webhook_secret")),
+        "default_provider": account.get("default_provider", "auto"),
+        "auto_dispatch_on_verified": bool(account.get("auto_dispatch_on_verified")),
+        "gemini_api_key_configured": bool(account.get("gemini_api_key")),
+        "openai_api_key_configured": bool(account.get("openai_api_key")),
+        "inbound_token_configured": bool(account.get("inbound_token")),
+        "full_name": user["full_name"],
+        "email": user["email"],
+        "company_name": user["company_name"],
     }
 
 @router.post("")
-def update_settings(payload: SettingsUpdatePayload):
-    env_path = BASE_DIR / ".env"
-    existing_lines = []
-    if env_path.exists():
-        with open(env_path, "r") as f:
-            existing_lines = f.readlines()
+def update_settings(payload: SettingsUpdatePayload, user: dict = Depends(current_user)):
+    values = payload.model_dump(exclude_unset=True)
+    if values.get("default_provider") not in (None, "auto", "gemini", "openai", "heuristic"):
+        raise HTTPException(status_code=422, detail="Choose a supported extraction provider")
+    webhook_url = values.get("webhook_url")
+    if webhook_url and not re.fullmatch(r"https?://[^\s]+", webhook_url):
+        raise HTTPException(status_code=422, detail="Webhook URL must use HTTP or HTTPS")
+    AccountSettingsRepository.update(user["id"], values)
+    return {"message": "Settings saved", "current": get_current_settings(user)}
 
-    env_dict = {}
-    for line in existing_lines:
-        line = line.strip()
-        if "=" in line and not line.startswith("#"):
-            k, v = line.split("=", 1)
-            env_dict[k.strip()] = v.strip()
 
-    if payload.default_webhook_url is not None:
-        env_dict["DEFAULT_WEBHOOK_URL"] = payload.default_webhook_url
-    if payload.webhook_secret is not None:
-        env_dict["WEBHOOK_SECRET"] = payload.webhook_secret
-    if payload.default_provider is not None:
-        env_dict["DEFAULT_PROVIDER"] = payload.default_provider
-    if payload.gemini_api_key is not None and payload.gemini_api_key != "":
-        env_dict["GEMINI_API_KEY"] = payload.gemini_api_key
-    if payload.openai_api_key is not None and payload.openai_api_key != "":
-        env_dict["OPENAI_API_KEY"] = payload.openai_api_key
-    if payload.auto_dispatch_on_verified is not None:
-        env_dict["AUTO_DISPATCH_ON_VERIFIED"] = "true" if payload.auto_dispatch_on_verified else "false"
+class ProfileUpdatePayload(BaseModel):
+    full_name: str = Field(min_length=1, max_length=120)
+    email: str = Field(min_length=3, max_length=254)
+    company_name: str = Field(default="", max_length=160)
 
-    # Write back
-    with open(env_path, "w") as f:
-        for k, v in env_dict.items():
-            f.write(f"{k}={v}\n")
 
-    reload_settings()
-    return {"message": "Settings updated successfully", "current": get_current_settings()}
+class PasswordUpdatePayload(BaseModel):
+    current_password: str = Field(min_length=1, max_length=256)
+    new_password: str = Field(min_length=12, max_length=256)
+
+
+@router.put("/profile")
+def update_profile(payload: ProfileUpdatePayload, user: dict = Depends(current_user)):
+    email = payload.email.strip().lower()
+    if not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", email):
+        raise HTTPException(status_code=422, detail="Enter a valid email address")
+    existing = UserRepository.get_by_email(email)
+    if existing and existing["id"] != user["id"]:
+        raise HTTPException(status_code=409, detail="An account with that email already exists")
+    UserRepository.update_profile(user["id"], email, payload.full_name.strip(), payload.company_name.strip())
+    return {"message": "Account details saved"}
+
+
+@router.put("/password")
+def update_password(payload: PasswordUpdatePayload, user: dict = Depends(current_user)):
+    if not verify_password(payload.current_password, user["password_hash"]):
+        raise HTTPException(status_code=400, detail="Current password is incorrect")
+    UserRepository.update_password(user["id"], hash_password(payload.new_password))
+    return {"message": "Password updated"}
+
+
+@router.post("/inbound-token/rotate")
+def rotate_inbound_token(user: dict = Depends(current_user)):
+    token = AccountSettingsRepository.rotate_inbound_token(user["id"])
+    return {"inbound_token": token}
 
 @router.post("/test-webhook")
-async def test_webhook_connection(url: Optional[str] = None):
-    target = url or settings.default_webhook_url
+async def test_webhook_connection(url: Optional[str] = None, user: dict = Depends(current_user)):
+    account = AccountSettingsRepository.get(user["id"])
+    target = url or account.get("webhook_url", "")
     if not target:
         raise HTTPException(status_code=400, detail="Please provide or save a webhook URL first.")
 
@@ -83,7 +93,7 @@ async def test_webhook_connection(url: Optional[str] = None):
         "message": "DocFlow Webhook connection verified successfully!",
         "timestamp": 1728100000
     }
-    success, code, body, duration = await WebhookDispatcher.dispatch(target, payload)
+    success, code, body, duration = await WebhookDispatcher.dispatch(target, payload, account.get("webhook_secret", ""))
     return {
         "success": success,
         "status_code": code,
