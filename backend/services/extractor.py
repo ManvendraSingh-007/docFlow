@@ -19,49 +19,51 @@ from backend.services.validator import DocumentValidator
 SYSTEM_PROMPT = """You are a high-precision B2B document extraction engine.
 Extract all structured data from this Purchase Order, Invoice, or Delivery Slip.
 Ensure exact arithmetic: extract line item descriptions, SKUs, quantities, unit prices, line totals, subtotal, taxes, shipping, discounts, and grand total.
+Never invent missing values. Return null for unknown scalar fields, an empty string for an unknown description, and an empty array when no line items are visible.
+Preserve the currency shown on the document. Do not use the example values in the schema as extracted data.
 Always return strictly valid JSON conforming to the requested schema. Do not include markdown ticks or commentary outside JSON.
 """
 
 EXTRACTION_SCHEMA = {
-    "document_type": "PURCHASE_ORDER",
-    "document_number": "PO-10492",
-    "document_date": "YYYY-MM-DD",
-    "due_date": "YYYY-MM-DD",
-    "payment_terms": "Net 30",
+    "document_type": "INVOICE or PURCHASE_ORDER",
+    "document_number": None,
+    "document_date": None,
+    "due_date": None,
+    "payment_terms": None,
     "vendor": {
-        "name": "Vendor Name",
-        "tax_id": "Tax/VAT ID",
-        "email": "vendor@example.com",
-        "phone": "+1-555-0199",
-        "address": "123 Industrial Parkway, Suite 400"
+        "name": None,
+        "tax_id": None,
+        "email": None,
+        "phone": None,
+        "address": None
     },
     "buyer": {
-        "name": "Buyer Contact Name",
-        "company": "Buyer Company LLC",
-        "email": "ap@buyer.com",
-        "billing_address": "456 Market St, City, ST 94103",
-        "shipping_address": "456 Market St, Dock 2, City, ST 94103"
+        "name": None,
+        "company": None,
+        "email": None,
+        "billing_address": None,
+        "shipping_address": None
     },
     "line_items": [
         {
-            "line_no": 1,
-            "sku": "SKU-9921",
-            "description": "Item Description",
-            "quantity": 10.0,
-            "unit_price": 45.00,
-            "tax_rate": 0.08,
-            "line_total": 450.00
+            "line_no": 0,
+            "sku": None,
+            "description": "",
+            "quantity": 0.0,
+            "unit_price": 0.0,
+            "tax_rate": None,
+            "line_total": 0.0
         }
     ],
     "summary": {
-        "currency": "USD",
-        "subtotal": 450.00,
-        "tax_amount": 36.00,
-        "shipping_amount": 15.00,
-        "discount_amount": 0.00,
-        "grand_total": 501.00
+        "currency": None,
+        "subtotal": None,
+        "tax_amount": None,
+        "shipping_amount": None,
+        "discount_amount": None,
+        "grand_total": None
     },
-    "notes": "Payment terms or comments"
+    "notes": None
 }
 
 def clean_num(val) -> float:
@@ -79,28 +81,32 @@ class DocumentExtractor:
     """
 
     @classmethod
-    async def extract(cls, file_path: Path, mime_type: str = "application/pdf") -> ParsedDocumentData:
-        provider = settings.default_provider.lower()
+    async def extract(cls, file_path: Path, mime_type: str = "application/pdf", account_settings: Optional[Dict[str, Any]] = None) -> ParsedDocumentData:
+        use_account_credentials = account_settings is not None
+        account_settings = account_settings or {}
+        gemini_api_key = account_settings.get("gemini_api_key") or ("" if use_account_credentials else settings.gemini_api_key)
+        openai_api_key = account_settings.get("openai_api_key") or ("" if use_account_credentials else settings.openai_api_key)
+        provider = (account_settings.get("default_provider") or settings.default_provider).lower()
 
         # Decide provider
         if provider == "auto":
-            if settings.gemini_api_key:
+            if gemini_api_key:
                 provider = "gemini"
-            elif settings.openai_api_key:
+            elif openai_api_key:
                 provider = "openai"
             else:
                 provider = "heuristic"
 
         parsed_data = None
-        if provider == "gemini" and settings.gemini_api_key:
+        if provider == "gemini" and gemini_api_key:
             try:
-                parsed_data = await cls._extract_with_gemini(file_path, mime_type)
+                parsed_data = await cls._extract_with_gemini(file_path, mime_type, gemini_api_key)
             except Exception as e:
                 print(f"[Extractor] Gemini extraction failed, falling back to layout parser: {e}")
                 parsed_data = await cls._extract_smart_layout(file_path)
-        elif provider == "openai" and settings.openai_api_key:
+        elif provider == "openai" and openai_api_key:
             try:
-                parsed_data = await cls._extract_with_openai(file_path, mime_type)
+                parsed_data = await cls._extract_with_openai(file_path, mime_type, openai_api_key)
             except Exception as e:
                 print(f"[Extractor] OpenAI extraction failed, falling back to layout parser: {e}")
                 parsed_data = await cls._extract_smart_layout(file_path)
@@ -112,8 +118,9 @@ class DocumentExtractor:
         return parsed_data
 
     @classmethod
-    async def _extract_with_gemini(cls, file_path: Path, mime_type: str) -> ParsedDocumentData:
+    async def _extract_with_gemini(cls, file_path: Path, mime_type: str, api_key: Optional[str] = None) -> ParsedDocumentData:
         import base64
+        api_key = api_key or settings.gemini_api_key
         with open(file_path, "rb") as f:
             encoded_bytes = base64.b64encode(f.read()).decode("utf-8")
 
@@ -123,12 +130,11 @@ class DocumentExtractor:
             f"Extract all information accurately from the document and return only valid JSON."
         )
 
-        # Try gemini-2.0-flash first, fall back to gemini-1.5-flash
-        models_to_try = ["gemini-2.0-flash", "gemini-1.5-flash"]
+        models_to_try = ["gemini-2.5-flash", "gemini-2.0-flash"]
         last_error = None
 
         for model_name in models_to_try:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={settings.gemini_api_key}"
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
             payload = {
                 "contents": [
                     {
@@ -155,7 +161,7 @@ class DocumentExtractor:
                     data = resp.json()
                     text_content = data["candidates"][0]["content"]["parts"][0]["text"]
                     parsed_dict = json.loads(text_content)
-                    return ParsedDocumentData(**parsed_dict)
+                    return cls._parse_ai_result(parsed_dict)
             except Exception as e:
                 last_error = e
                 continue
@@ -163,30 +169,33 @@ class DocumentExtractor:
         raise last_error or Exception("Gemini extraction failed on all model endpoints")
 
     @classmethod
-    async def _extract_with_openai(cls, file_path: Path, mime_type: str) -> ParsedDocumentData:
+    async def _extract_with_openai(cls, file_path: Path, mime_type: str, api_key: Optional[str] = None) -> ParsedDocumentData:
         import base64
-        with open(file_path, "rb") as f:
-            encoded_bytes = base64.b64encode(f.read()).decode("utf-8")
+        api_key = api_key or settings.openai_api_key
 
         prompt = (
             f"{SYSTEM_PROMPT}\n"
             f"Extract all information accurately into this JSON schema:\n{json.dumps(EXTRACTION_SCHEMA, indent=2)}\n"
         )
 
+        content = [{"type": "text", "text": prompt}]
+        if file_path.suffix.lower() == ".pdf":
+            content.extend({"type": "image_url", "image_url": {"url": url, "detail": "high"}} for url in cls._pdf_image_data_urls(file_path))
+        else:
+            with open(file_path, "rb") as f:
+                encoded_bytes = base64.b64encode(f.read()).decode("utf-8")
+            content.append({"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{encoded_bytes}", "detail": "high"}})
+
         headers = {
-            "Authorization": f"Bearer {settings.openai_api_key}",
+            "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json"
         }
-        image_url = f"data:{mime_type};base64,{encoded_bytes}"
         payload = {
             "model": "gpt-4o-mini",
             "messages": [
                 {
                     "role": "user",
-                    "content": [
-                        {"type": "text", "text": prompt},
-                        {"type": "image_url", "image_url": {"url": image_url}}
-                    ]
+                    "content": content
                 }
             ],
             "response_format": {"type": "json_object"}
@@ -199,7 +208,37 @@ class DocumentExtractor:
 
         text_content = data["choices"][0]["message"]["content"]
         parsed_dict = json.loads(text_content)
+        return cls._parse_ai_result(parsed_dict)
+
+    @staticmethod
+    def _parse_ai_result(parsed_dict: Dict[str, Any]) -> ParsedDocumentData:
+        summary = parsed_dict.get("summary")
+        if isinstance(summary, dict) and not summary.get("currency"):
+            summary["currency"] = "UNKNOWN"
         return ParsedDocumentData(**parsed_dict)
+
+    @staticmethod
+    def _pdf_image_data_urls(file_path: Path) -> List[str]:
+        import base64
+        from io import BytesIO
+        import pypdfium2 as pdfium
+
+        document = pdfium.PdfDocument(str(file_path))
+        if len(document) > 20:
+            document.close()
+            raise ValueError("OpenAI vision extraction is limited to 20-page PDFs")
+        image_data_urls = []
+        try:
+            for page in document:
+                image = page.render(scale=1.5).to_pil()
+                image_buffer = BytesIO()
+                image.save(image_buffer, format="JPEG", quality=85)
+                encoded = base64.b64encode(image_buffer.getvalue()).decode("ascii")
+                image_data_urls.append(f"data:image/jpeg;base64,{encoded}")
+                page.close()
+        finally:
+            document.close()
+        return image_data_urls
 
     @classmethod
     async def _extract_smart_layout(cls, file_path: Path) -> ParsedDocumentData:
@@ -242,8 +281,7 @@ class DocumentExtractor:
                     print(f"[SmartLayout] metadata text fallback error: {ex}")
 
         if not full_text.strip():
-            # In case of empty text or pure image without OCR
-            return cls._generate_sample_parsed_data(file_path.name)
+            return ParsedDocumentData(notes="No text could be extracted. Configure a vision provider or OCR service to process scanned documents.")
 
         return cls._parse_layout_document(full_text, pages_text, all_tables, file_path.name, metadata_text)
 
@@ -252,11 +290,13 @@ class DocumentExtractor:
         metadata_source = f"{full_text}\n{metadata_text}"
 
         # 1. Currency Detection
-        currency = "USD"
+        currency = "UNKNOWN"
         if "€" in metadata_source or "EUR" in metadata_source:
             currency = "EUR"
         elif "£" in metadata_source or "GBP" in metadata_source:
             currency = "GBP"
+        elif "$" in metadata_source or re.search(r"\bUSD\b", metadata_source, re.IGNORECASE):
+            currency = "USD"
 
         # 2. Document Type Detection
         doc_type = "INVOICE" if "invoice" in metadata_source.lower() or "invoice" in filename.lower() else "PURCHASE_ORDER"
@@ -291,7 +331,7 @@ class DocumentExtractor:
                 doc_date = m.group(1).strip()
                 break
         if not doc_date:
-            doc_date = "2026-10-04"
+            doc_date = None
 
         # 5. Vendor Details Extraction
         vendor_name = None
@@ -332,7 +372,7 @@ class DocumentExtractor:
                         vendor_name = line
                         break
         if not vendor_name:
-            vendor_name = "Supplier / Vendor"
+            vendor_name = None
 
         # Tax ID
         tax_id = None
@@ -544,49 +584,4 @@ class DocumentExtractor:
             ),
             notes="Extracted via DocFlow Advanced Layout Engine"
         )
-
-    @classmethod
-    def _generate_sample_parsed_data(cls, filename: str) -> ParsedDocumentData:
-        """Realistic data generator for instant demo testing"""
-        is_invoice = "invoice" in filename.lower()
-        items = [
-            LineItem(line_no=1, sku="HYD-4001", description="Heavy Duty Hydraulic Hose Assembly 1/2in x 50ft", quantity=3.0, unit_price=145.00, line_total=435.00),
-            LineItem(line_no=2, sku="VAL-8820", description="Brass 2-Way Ball Valve 1-inch NPT", quantity=5.0, unit_price=34.50, line_total=172.50),
-            LineItem(line_no=3, sku="GSK-1104", description="Flange Gasket Nitrile High-Pressure 150#", quantity=10.0, unit_price=8.20, line_total=82.00),
-        ]
-        subtotal = sum(i.line_total for i in items)
-        tax = round(subtotal * 0.0825, 2)
-        shipping = 35.00
-        grand_total = round(subtotal + tax + shipping, 2)
-
-        return ParsedDocumentData(
-            document_type="INVOICE" if is_invoice else "PURCHASE_ORDER",
-            document_number=f"PO-{abs(hash(filename)) % 100000:05d}",
-            document_date="2026-10-04",
-            due_date="2026-11-04",
-            payment_terms="Net 30 Days",
-            vendor=VendorInfo(
-                name="Vanguard Supply & Manufacturing Co.",
-                tax_id="EIN-84-2910384",
-                email="billing@vanguardsupply.com",
-                phone="+1 (800) 555-0142",
-                address="5800 Innovation Way, Austin, TX 78744"
-            ),
-            buyer=BuyerInfo(
-                company="Nexus Building Systems LLC",
-                name="Procurement Team",
-                email="procurement@nexusbuild.io",
-                billing_address="900 Enterprise Way, Suite 300, Chicago, IL 60601",
-                shipping_address="Warehouse Dock 7, 1400 Transport St, Gary, IN 46402"
-            ),
-            line_items=items,
-            summary=FinancialSummary(
-                currency="USD",
-                subtotal=subtotal,
-                tax_amount=tax,
-                shipping_amount=shipping,
-                discount_amount=0.0,
-                grand_total=grand_total
-            ),
-            notes="Please reference PO number on all shipping manifests."
-        )
+__all__ = ["DocumentExtractor", "clean_num"]

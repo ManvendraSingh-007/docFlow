@@ -29,7 +29,9 @@ class WebhookDispatcher:
         if not url:
             return False, 0, "No webhook URL configured", 0.0
 
-        secret = secret or settings.webhook_secret
+        secret = settings.webhook_secret if secret is None else secret
+        if not secret:
+            return False, 0, "Webhook signing secret is not configured", 0.0
         import json
         payload_json = json.dumps(payload, ensure_ascii=False)
         payload_bytes = payload_json.encode("utf-8")
