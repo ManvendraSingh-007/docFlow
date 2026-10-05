@@ -25,6 +25,9 @@ def test_mock_inbound_email():
     data = response.json()
     assert data["status"] == "success"
     assert "document_id" in data
+    detail_response = client.get(f"/documents/{data['document_id']}")
+    assert detail_response.status_code == 200
+    assert detail_response.headers["content-type"].startswith("text/html")
 
 def test_list_documents():
     response = client.get("/api/documents")
