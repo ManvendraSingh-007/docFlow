@@ -96,6 +96,29 @@ def init_db():
                 client_ip TEXT NOT NULL,
                 attempted_at TEXT NOT NULL,
                 succeeded INTEGER NOT NULL
+        );
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS provider_credentials (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                provider TEXT NOT NULL,
+                label TEXT NOT NULL,
+                api_key_enc TEXT NOT NULL,
+                model TEXT NOT NULL,
+                is_selected INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_provider_credentials_user ON provider_credentials(user_id, provider)")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS credential_security (
+                user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+                pin_hash TEXT NOT NULL,
+                failed_attempts INTEGER NOT NULL DEFAULT 0,
+                locked_until TEXT,
+                updated_at TEXT NOT NULL
             );
         """)
         conn.execute("""
@@ -188,6 +211,27 @@ def init_db():
             conn.execute("ALTER TABLE account_settings ADD COLUMN IF NOT EXISTS openai_model TEXT NOT NULL DEFAULT 'gpt-4o-mini'")
             conn.execute("ALTER TABLE account_settings ADD COLUMN IF NOT EXISTS mistral_model TEXT NOT NULL DEFAULT 'mistral-small-2506'")
             conn.execute("ALTER TABLE documents ADD COLUMN IF NOT EXISTS user_id TEXT REFERENCES users(id) ON DELETE CASCADE")
+        # Move existing single-key settings into the credential vault once.
+        for legacy in conn.execute("SELECT * FROM account_settings").fetchall():
+            legacy = dict(legacy)
+            for provider, key_field, model_field in (
+                ("gemini", "gemini_api_key_enc", "gemini_model"),
+                ("openai", "openai_api_key_enc", "openai_model"),
+                ("mistral", "mistral_api_key_enc", "mistral_model"),
+                ("openrouter", "openrouter_api_key_enc", "openrouter_model"),
+            ):
+                encrypted = legacy.get(key_field) or ""
+                if not encrypted or conn.execute("SELECT 1 FROM provider_credentials WHERE user_id = ? AND provider = ?", (legacy["user_id"], provider)).fetchone():
+                    continue
+                api_key = decrypt_secret(encrypted)
+                if not api_key:
+                    continue
+                now = datetime.now(timezone.utc).isoformat()
+                conn.execute(
+                    "INSERT INTO provider_credentials (id, user_id, provider, label, api_key_enc, model, is_selected, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)",
+                    (str(uuid.uuid4()), legacy["user_id"], provider, f"{provider.title()} key", encrypt_secret(api_key), legacy.get(model_field) or "", now, now),
+                )
+                conn.execute(f"UPDATE account_settings SET {key_field} = '' WHERE user_id = ?", (legacy["user_id"],))
     conn.close()
 
 
@@ -331,6 +375,7 @@ class AccountSettingsRepository:
         result = dict(row)
         for field in ("webhook_secret_enc", "gemini_api_key_enc", "openai_api_key_enc", "mistral_api_key_enc", "openrouter_api_key_enc", "inbound_token_enc"):
             result[field.removesuffix("_enc")] = decrypt_secret(result.get(field))
+        result["provider_credentials"] = ProviderCredentialRepository.selected_for_user(user_id)
         return result
 
     @classmethod
@@ -340,10 +385,10 @@ class AccountSettingsRepository:
             "webhook_url": values.get("webhook_url", current.get("webhook_url", "")),
             "webhook_secret_enc": encrypt_secret(values.get("webhook_secret", current.get("webhook_secret", ""))),
             "default_provider": values.get("default_provider", current.get("default_provider", "auto")),
-            "gemini_api_key_enc": encrypt_secret(values.get("gemini_api_key", current.get("gemini_api_key", ""))),
-            "openai_api_key_enc": encrypt_secret(values.get("openai_api_key", current.get("openai_api_key", ""))),
-            "mistral_api_key_enc": encrypt_secret(values.get("mistral_api_key", current.get("mistral_api_key", ""))),
-            "openrouter_api_key_enc": encrypt_secret(values.get("openrouter_api_key", current.get("openrouter_api_key", ""))),
+            "gemini_api_key_enc": "",
+            "openai_api_key_enc": "",
+            "mistral_api_key_enc": "",
+            "openrouter_api_key_enc": "",
             "openrouter_model": values.get("openrouter_model", current.get("openrouter_model", "google/gemini-2.5-flash")),
             "gemini_model": values.get("gemini_model", current.get("gemini_model", "gemini-3.1-flash-lite")),
             "openai_model": values.get("openai_model", current.get("openai_model", "gpt-4o-mini")),
@@ -375,6 +420,68 @@ class AccountSettingsRepository:
             )
         conn.close()
         return token
+
+class ProviderCredentialRepository:
+    @classmethod
+    def list_for_user(cls, user_id: str) -> list[Dict[str, Any]]:
+        conn = get_connection()
+        rows = conn.execute("SELECT * FROM provider_credentials WHERE user_id = ? ORDER BY provider, created_at", (user_id,)).fetchall()
+        conn.close()
+        result = []
+        for row in rows:
+            item = dict(row)
+            secret = decrypt_secret(item.pop("api_key_enc"))
+            item["key_suffix"] = secret[-4:]
+            result.append(item)
+        return result
+
+    @classmethod
+    def selected_for_user(cls, user_id: str) -> Dict[str, Dict[str, str]]:
+        conn = get_connection()
+        rows = conn.execute("SELECT provider, api_key_enc, model FROM provider_credentials WHERE user_id = ? AND is_selected = 1", (user_id,)).fetchall()
+        conn.close()
+        return {row["provider"]: {"api_key": decrypt_secret(row["api_key_enc"]), "model": row["model"]} for row in rows}
+
+    @classmethod
+    def create(cls, user_id: str, provider: str, label: str, api_key: str, model: str) -> str:
+        credential_id, now = str(uuid.uuid4()), datetime.now(timezone.utc).isoformat()
+        conn = get_connection()
+        with conn:
+            count = conn.execute("SELECT COUNT(*) AS total FROM provider_credentials WHERE user_id = ? AND provider = ?", (user_id, provider)).fetchone()["total"]
+            conn.execute("INSERT INTO provider_credentials (id, user_id, provider, label, api_key_enc, model, is_selected, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", (credential_id, user_id, provider, label, encrypt_secret(api_key), model, int(count == 0), now, now))
+        conn.close()
+        return credential_id
+
+    @classmethod
+    def update(cls, user_id: str, credential_id: str, label: str, model: str, api_key: Optional[str] = None) -> bool:
+        conn = get_connection()
+        with conn:
+            if api_key:
+                result = conn.execute("UPDATE provider_credentials SET label = ?, model = ?, api_key_enc = ?, updated_at = ? WHERE id = ? AND user_id = ?", (label, model, encrypt_secret(api_key), datetime.now(timezone.utc).isoformat(), credential_id, user_id))
+            else:
+                result = conn.execute("UPDATE provider_credentials SET label = ?, model = ?, updated_at = ? WHERE id = ? AND user_id = ?", (label, model, datetime.now(timezone.utc).isoformat(), credential_id, user_id))
+        conn.close()
+        return result.rowcount > 0
+
+    @classmethod
+    def select(cls, user_id: str, credential_id: str) -> bool:
+        conn = get_connection()
+        with conn:
+            row = conn.execute("SELECT provider FROM provider_credentials WHERE id = ? AND user_id = ?", (credential_id, user_id)).fetchone()
+            if row:
+                conn.execute("UPDATE provider_credentials SET is_selected = 0 WHERE user_id = ? AND provider = ?", (user_id, row["provider"]))
+                conn.execute("UPDATE provider_credentials SET is_selected = 1, updated_at = ? WHERE id = ? AND user_id = ?", (datetime.now(timezone.utc).isoformat(), credential_id, user_id))
+        conn.close()
+        return bool(row)
+
+    @classmethod
+    def delete(cls, user_id: str, credential_id: str) -> bool:
+        conn = get_connection()
+        with conn:
+            result = conn.execute("DELETE FROM provider_credentials WHERE id = ? AND user_id = ?", (credential_id, user_id))
+        conn.close()
+        return result.rowcount > 0
+
 
 class DocumentRepository:
 

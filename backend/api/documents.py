@@ -21,6 +21,8 @@ router = APIRouter(prefix="/api/documents", tags=["documents"])
 
 async def process_and_dispatch(doc_id: str, file_path: Path, mime_type: str, user_id: str) -> Optional[str]:
     try:
+        # Durable queue rows store paths as text; direct upload callers may pass Path.
+        file_path = Path(file_path)
         account_settings = AccountSettingsRepository.get(user_id)
         # Extract structured data
         parsed_data = await DocumentExtractor.extract(file_path, mime_type, account_settings)

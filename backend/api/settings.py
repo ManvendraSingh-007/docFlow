@@ -1,9 +1,10 @@
 import re
 from pydantic import BaseModel, Field
-from typing import Optional
-from fastapi import APIRouter, HTTPException, Depends
+from typing import Optional, Literal
+from datetime import datetime, timezone, timedelta
+from fastapi import APIRouter, HTTPException, Depends, Request
 from backend.auth import current_user
-from backend.database import AccountSettingsRepository, UserRepository
+from backend.database import AccountSettingsRepository, ProviderCredentialRepository, UserRepository, get_connection
 from backend.security import hash_password, verify_password
 from backend.services.webhook_dispatcher import WebhookDispatcher
 
@@ -13,10 +14,6 @@ class SettingsUpdatePayload(BaseModel):
     webhook_url: Optional[str] = None
     webhook_secret: Optional[str] = None
     default_provider: Optional[str] = None
-    gemini_api_key: Optional[str] = None
-    openai_api_key: Optional[str] = None
-    mistral_api_key: Optional[str] = None
-    openrouter_api_key: Optional[str] = None
     openrouter_model: Optional[str] = None
     gemini_model: Optional[str] = None
     openai_model: Optional[str] = None
@@ -26,15 +23,16 @@ class SettingsUpdatePayload(BaseModel):
 @router.get("")
 def get_current_settings(user: dict = Depends(current_user)):
     account = AccountSettingsRepository.get(user["id"])
+    credentials = account.get("provider_credentials", {})
     return {
         "webhook_url": account.get("webhook_url", ""),
         "webhook_secret_configured": bool(account.get("webhook_secret")),
         "default_provider": account.get("default_provider", "auto"),
         "auto_dispatch_on_verified": bool(account.get("auto_dispatch_on_verified")),
-        "gemini_api_key_configured": bool(account.get("gemini_api_key")),
-        "openai_api_key_configured": bool(account.get("openai_api_key")),
-        "mistral_api_key_configured": bool(account.get("mistral_api_key")),
-        "openrouter_api_key_configured": bool(account.get("openrouter_api_key")),
+        "gemini_api_key_configured": bool(credentials.get("gemini", {}).get("api_key")),
+        "openai_api_key_configured": bool(credentials.get("openai", {}).get("api_key")),
+        "mistral_api_key_configured": bool(credentials.get("mistral", {}).get("api_key")),
+        "openrouter_api_key_configured": bool(credentials.get("openrouter", {}).get("api_key")),
         "openrouter_model": account.get("openrouter_model", "google/gemini-2.5-flash"),
         "gemini_model": account.get("gemini_model", "gemini-3.1-flash-lite"),
         "openai_model": account.get("openai_model", "gpt-4o-mini"),
@@ -44,6 +42,133 @@ def get_current_settings(user: dict = Depends(current_user)):
         "email": user["email"],
         "company_name": user["company_name"],
     }
+
+
+def _credentials_unlocked(request: Request):
+    until = request.session.get("credential_unlock_until", 0)
+    if not isinstance(until, (int, float)) or until < datetime.now(timezone.utc).timestamp():
+        request.session.pop("credential_unlock_until", None)
+        raise HTTPException(status_code=423, detail="Unlock API key settings with your PIN first")
+
+
+class CredentialPinPayload(BaseModel):
+    pin: str = Field(min_length=6, max_length=12, pattern=r"^\d{6,12}$")
+    current_password: str = Field(min_length=1, max_length=256)
+
+
+class CredentialUnlockPayload(BaseModel):
+    pin: str = Field(min_length=6, max_length=12, pattern=r"^\d{6,12}$")
+
+
+class CredentialPayload(BaseModel):
+    provider: Literal["gemini", "openai", "mistral", "openrouter"]
+    label: str = Field(min_length=1, max_length=80)
+    api_key: str = Field(min_length=1, max_length=2048)
+    model: str = Field(min_length=1, max_length=160)
+
+
+class CredentialUpdatePayload(BaseModel):
+    label: str = Field(min_length=1, max_length=80)
+    api_key: Optional[str] = Field(default=None, max_length=2048)
+    model: str = Field(min_length=1, max_length=160)
+
+
+@router.get("/credentials/status")
+def credential_status(user: dict = Depends(current_user)):
+    conn = get_connection()
+    row = conn.execute("SELECT 1 FROM credential_security WHERE user_id = ?", (user["id"],)).fetchone()
+    conn.close()
+    return {"pin_configured": bool(row)}
+
+
+@router.post("/credentials/pin")
+def set_credentials_pin(payload: CredentialPinPayload, request: Request, user: dict = Depends(current_user)):
+    if not verify_password(payload.current_password, user["password_hash"]):
+        raise HTTPException(status_code=403, detail="Current password is incorrect")
+    now = datetime.now(timezone.utc).isoformat()
+    conn = get_connection()
+    with conn:
+        conn.execute("INSERT INTO credential_security (user_id, pin_hash, updated_at) VALUES (?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET pin_hash = excluded.pin_hash, failed_attempts = 0, locked_until = NULL, updated_at = excluded.updated_at", (user["id"], hash_password(payload.pin), now))
+    conn.close()
+    request.session["credential_unlock_until"] = datetime.now(timezone.utc).timestamp() + 300
+    return {"message": "PIN saved. API key settings are unlocked for five minutes."}
+
+
+@router.post("/credentials/unlock")
+def unlock_credentials(payload: CredentialUnlockPayload, request: Request, user: dict = Depends(current_user)):
+    conn = get_connection()
+    row = conn.execute("SELECT * FROM credential_security WHERE user_id = ?", (user["id"],)).fetchone()
+    if not row:
+        conn.close()
+        raise HTTPException(status_code=409, detail="Set an API key PIN first")
+    now = datetime.now(timezone.utc)
+    locked_until = row["locked_until"]
+    if locked_until and datetime.fromisoformat(locked_until) > now:
+        conn.close()
+        raise HTTPException(status_code=429, detail="PIN locked temporarily. Try again later.")
+    valid = verify_password(payload.pin, row["pin_hash"])
+    with conn:
+        if valid:
+            conn.execute("UPDATE credential_security SET failed_attempts = 0, locked_until = NULL WHERE user_id = ?", (user["id"],))
+        else:
+            attempts = row["failed_attempts"] + 1
+            locked = (now + timedelta(minutes=5)).isoformat() if attempts >= 5 else None
+            conn.execute("UPDATE credential_security SET failed_attempts = ?, locked_until = ? WHERE user_id = ?", (0 if locked else attempts, locked, user["id"]))
+    conn.close()
+    if not valid:
+        raise HTTPException(status_code=403, detail="PIN is incorrect")
+    request.session["credential_unlock_until"] = now.timestamp() + 300
+    return {"message": "API key settings unlocked for five minutes."}
+
+
+@router.post("/credentials/lock")
+def lock_credentials(request: Request, user: dict = Depends(current_user)):
+    request.session.pop("credential_unlock_until", None)
+    return {"message": "API key settings locked"}
+
+
+@router.get("/credentials")
+def list_credentials(request: Request, user: dict = Depends(current_user)):
+    _credentials_unlocked(request)
+    return {"credentials": ProviderCredentialRepository.list_for_user(user["id"])}
+
+
+@router.post("/credentials")
+def add_credential(payload: CredentialPayload, request: Request, user: dict = Depends(current_user)):
+    _credentials_unlocked(request)
+    label, key, model = payload.label.strip(), payload.api_key.strip(), payload.model.strip()
+    if not label or not key or not model:
+        raise HTTPException(status_code=422, detail="Name, API key, and model ID are required")
+    credential_id = ProviderCredentialRepository.create(user["id"], payload.provider, label, key, model)
+    return {"id": credential_id}
+
+
+@router.put("/credentials/{credential_id}")
+def edit_credential(credential_id: str, payload: CredentialUpdatePayload, request: Request, user: dict = Depends(current_user)):
+    _credentials_unlocked(request)
+    label, model = payload.label.strip(), payload.model.strip()
+    api_key = payload.api_key.strip() if payload.api_key else None
+    if not label or not model or (payload.api_key and not api_key):
+        raise HTTPException(status_code=422, detail="Name and model ID are required; replacement key cannot be blank")
+    if not ProviderCredentialRepository.update(user["id"], credential_id, label, model, api_key):
+        raise HTTPException(status_code=404, detail="API key not found")
+    return {"message": "API key updated"}
+
+
+@router.post("/credentials/{credential_id}/select")
+def select_credential(credential_id: str, request: Request, user: dict = Depends(current_user)):
+    _credentials_unlocked(request)
+    if not ProviderCredentialRepository.select(user["id"], credential_id):
+        raise HTTPException(status_code=404, detail="API key not found")
+    return {"message": "API key selected"}
+
+
+@router.delete("/credentials/{credential_id}")
+def delete_credential(credential_id: str, request: Request, user: dict = Depends(current_user)):
+    _credentials_unlocked(request)
+    if not ProviderCredentialRepository.delete(user["id"], credential_id):
+        raise HTTPException(status_code=404, detail="API key not found")
+    return {"message": "API key removed"}
 
 @router.post("")
 def update_settings(payload: SettingsUpdatePayload, user: dict = Depends(current_user)):

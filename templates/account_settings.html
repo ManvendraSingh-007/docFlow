@@ -51,12 +51,16 @@
           <option value="heuristic">Local PDF parser</option>
         </select>
       </label>
-      <div id="providerHint" class="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-600">Choose a provider to configure its API key and model. Automatic mode uses a saved provider key when available.</div>
-      <div data-provider-panel="gemini" class="provider-panel hidden rounded-xl border border-slate-300 bg-slate-50 p-4"><h3 class="text-sm font-semibold text-slate-900">Google Gemini</h3><div class="mt-4 grid gap-4 sm:grid-cols-2"><label class="text-sm font-medium text-slate-700">API key<input id="geminiKey" type="password" autocomplete="off" placeholder="Leave blank to keep saved key" class="mt-1.5 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal"></label><label class="text-sm font-medium text-slate-700">Model ID<input id="geminiModel" value="gemini-3.1-flash-lite" class="mt-1.5 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal"></label></div></div>
-      <div data-provider-panel="openai" class="provider-panel hidden rounded-xl border border-slate-300 bg-slate-50 p-4"><h3 class="text-sm font-semibold text-slate-900">OpenAI</h3><div class="mt-4 grid gap-4 sm:grid-cols-2"><label class="text-sm font-medium text-slate-700">API key<input id="openaiKey" type="password" autocomplete="off" placeholder="Leave blank to keep saved key" class="mt-1.5 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal"></label><label class="text-sm font-medium text-slate-700">Model ID<input id="openaiModel" value="gpt-4o-mini" class="mt-1.5 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal"></label></div></div>
-      <div data-provider-panel="mistral" class="provider-panel hidden rounded-xl border border-slate-300 bg-slate-50 p-4"><h3 class="text-sm font-semibold text-slate-900">Mistral</h3><div class="mt-4 grid gap-4 sm:grid-cols-2"><label class="text-sm font-medium text-slate-700">API key<input id="mistralKey" type="password" autocomplete="off" placeholder="Leave blank to keep saved key" class="mt-1.5 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal"></label><label class="text-sm font-medium text-slate-700">Vision model ID<input id="mistralModel" value="mistral-small-2506" class="mt-1.5 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal"></label></div></div>
-      <div data-provider-panel="openrouter" class="provider-panel hidden rounded-xl border border-slate-300 bg-slate-50 p-4"><h3 class="text-sm font-semibold text-slate-900">OpenRouter</h3><div class="mt-4 grid gap-4 sm:grid-cols-2"><label class="text-sm font-medium text-slate-700">API key<input id="openrouterKey" type="password" autocomplete="off" placeholder="Leave blank to keep saved key" class="mt-1.5 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal"></label><label class="text-sm font-medium text-slate-700">Vision model ID<input id="openrouterModel" value="google/gemini-2.5-flash" placeholder="provider/model" class="mt-1.5 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal"><span class="mt-1 block text-xs font-normal text-slate-500">Use a model ID from OpenRouter’s catalog.</span></label></div></div>
-      <p id="providerStatus" class="text-xs text-slate-500"></p>
+      <div id="providerHint" class="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-600">Automatic mode uses the selected saved key for the first available provider. Each provider can have several keys.</div>
+      <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+        <div class="flex flex-wrap items-center justify-between gap-3"><div><h3 class="text-sm font-semibold text-slate-900">API keys</h3><p id="credentialLockStatus" class="mt-1 text-xs text-slate-500">Set a PIN to protect saved API keys.</p></div><button id="credentialLockButton" onclick="lockCredentials()" class="hidden rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700">Lock</button></div>
+        <div id="credentialPinSetup" class="mt-4 hidden grid gap-3 sm:grid-cols-3"><label class="text-xs font-medium text-slate-600">Account password<input id="pinPassword" type="password" autocomplete="current-password" class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"></label><label class="text-xs font-medium text-slate-600">New PIN (6–12 digits)<input id="newCredentialPin" type="password" inputmode="numeric" maxlength="12" class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"></label><button onclick="saveCredentialPin()" class="self-end rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white">Set PIN</button></div>
+        <div id="credentialUnlock" class="mt-4 hidden flex flex-wrap gap-3"><input id="credentialPin" type="password" inputmode="numeric" maxlength="12" placeholder="Enter PIN" class="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"><button onclick="unlockCredentials()" class="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white">Unlock keys</button></div>
+        <div id="credentialManager" class="mt-4 hidden">
+          <div id="credentialList" class="space-y-2"></div>
+          <div class="mt-4 grid gap-3 border-t border-slate-200 pt-4 sm:grid-cols-2"><input id="credentialId" type="hidden"><label class="text-xs font-medium text-slate-600">Provider<select id="credentialProvider" class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"><option value="gemini">Google Gemini</option><option value="openai">OpenAI</option><option value="mistral">Mistral</option><option value="openrouter">OpenRouter</option></select></label><label class="text-xs font-medium text-slate-600">Name<input id="credentialLabel" placeholder="e.g. Finance team" class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"></label><label class="text-xs font-medium text-slate-600 sm:col-span-2">API key<input id="credentialApiKey" type="password" autocomplete="new-password" placeholder="Enter key; leave blank when editing to keep current key" class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"></label><label class="text-xs font-medium text-slate-600 sm:col-span-2">Model ID<input id="credentialModel" placeholder="Provider model ID" class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"></label><div class="flex gap-2 sm:col-span-2"><button id="credentialSaveButton" onclick="saveCredential()" class="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white">Add API key</button><button onclick="resetCredentialForm()" class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm">Clear</button></div></div>
+        </div>
+      </div>
       <button onclick="saveSettings()" class="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800">Save extraction settings</button>
     </div>
   </section>{% endif %}
@@ -116,23 +120,91 @@ async function loadSettings() {
     const setValue = (id, value) => { const el = document.getElementById(id); if (el) el.value = value || ""; };
     setValue("profileName", data.full_name); setValue("profileEmail", data.email); setValue("companyName", data.company_name);
     setValue("webhookUrl", data.webhook_url); setValue("defaultProvider", data.default_provider || "auto");
-    setValue("geminiModel", data.gemini_model || "gemini-3.1-flash-lite"); setValue("openaiModel", data.openai_model || "gpt-4o-mini");
-    setValue("mistralModel", data.mistral_model || "mistral-small-2506"); setValue("openrouterModel", data.openrouter_model || "google/gemini-2.5-flash");
     updateProviderPanel();
     const autoDispatch = document.getElementById("autoDispatch"); if (autoDispatch) autoDispatch.checked = data.auto_dispatch_on_verified;
-    const providers = [];
-    if (data.gemini_api_key_configured) providers.push("Gemini");
-    if (data.openai_api_key_configured) providers.push("OpenAI");
-    if (data.mistral_api_key_configured) providers.push("Mistral");
-    if (data.openrouter_api_key_configured) providers.push("OpenRouter");
-    const providerStatus = document.getElementById("providerStatus");
-    if (providerStatus) providerStatus.textContent = providers.length ? `Connected: ${providers.join(", ")}` : "No AI provider key saved. The local parser will be used.";
+    loadCredentialStatus();
     const inboundStatus = document.getElementById("inboundTokenStatus");
     if (inboundStatus) inboundStatus.textContent = data.inbound_token_configured ? "A token is active." : "No token created.";
   } catch (error) {
     showMessage(error.message);
   }
 }
+
+const providerNames = { gemini: "Google Gemini", openai: "OpenAI", mistral: "Mistral", openrouter: "OpenRouter" };
+function escapeHtml(value) { return String(value).replace(/[&<>"']/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch])); }
+
+async function loadCredentialStatus() {
+  const status = await (await fetch("/api/settings/credentials/status")).json();
+  const setup = document.getElementById("credentialPinSetup"), unlock = document.getElementById("credentialUnlock");
+  const manager = document.getElementById("credentialManager"), label = document.getElementById("credentialLockStatus");
+  document.getElementById("credentialLockButton").classList.add("hidden");
+  if (!status.pin_configured) {
+    setup.classList.remove("hidden"); unlock.classList.add("hidden"); manager.classList.add("hidden");
+    label.textContent = "Set a PIN to protect saved API keys. Confirm your account password to create it.";
+    return;
+  }
+  setup.classList.add("hidden"); unlock.classList.remove("hidden");
+  try {
+    const result = await requestJson("/api/settings/credentials", "GET");
+    manager.classList.remove("hidden"); unlock.classList.add("hidden");
+    document.getElementById("credentialLockButton").classList.remove("hidden");
+    label.textContent = "Unlocked for five minutes. Saved keys stay masked; replace a key to change it.";
+    renderCredentials(result.credentials || []);
+  } catch (error) {
+    manager.classList.add("hidden");
+    label.textContent = "API key settings are locked. Enter your PIN to continue.";
+  }
+}
+
+function renderCredentials(credentials) {
+  const list = document.getElementById("credentialList");
+  if (!credentials.length) { list.innerHTML = '<p class="rounded-lg border border-dashed border-slate-300 p-4 text-sm text-slate-500">No API keys saved.</p>'; return; }
+  list.innerHTML = credentials.map(c => `<div class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white p-3"><div class="min-w-0"><p class="truncate text-sm font-medium text-slate-800">${escapeHtml(c.label)} <span class="font-normal text-slate-500">· ${providerNames[c.provider] || escapeHtml(c.provider)}</span> ${c.is_selected ? '<span class="ml-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">Selected</span>' : ''}</p><p class="mt-1 font-mono text-xs text-slate-500">••••••••${escapeHtml(c.key_suffix || "")}${c.model ? ` · ${escapeHtml(c.model)}` : ""}</p></div><div class="flex gap-2"><button onclick="selectCredential('${c.id}')" class="rounded border border-slate-300 px-2.5 py-1.5 text-xs">${c.is_selected ? "In use" : "Use this key"}</button><button onclick="editCredential('${c.id}')" class="rounded border border-slate-300 px-2.5 py-1.5 text-xs">Edit</button><button onclick="removeCredential('${c.id}')" class="rounded border border-red-200 px-2.5 py-1.5 text-xs text-red-700">Remove</button></div></div>`).join("");
+}
+
+async function saveCredentialPin() {
+  try {
+    await requestJson("/api/settings/credentials/pin", "POST", { current_password: document.getElementById("pinPassword").value, pin: document.getElementById("newCredentialPin").value });
+    document.getElementById("pinPassword").value = ""; document.getElementById("newCredentialPin").value = "";
+    showMessage("API key PIN saved."); await loadCredentialStatus();
+  } catch (error) { showMessage(error.message); }
+}
+
+async function unlockCredentials() {
+  try { await requestJson("/api/settings/credentials/unlock", "POST", { pin: document.getElementById("credentialPin").value }); document.getElementById("credentialPin").value = ""; await loadCredentialStatus(); }
+  catch (error) { showMessage(error.message); }
+}
+
+async function lockCredentials() {
+  try { await requestJson("/api/settings/credentials/lock", "POST"); document.getElementById("credentialLockButton").classList.add("hidden"); await loadCredentialStatus(); }
+  catch (error) { showMessage(error.message); }
+}
+
+async function refreshCredentials() { const data = await requestJson("/api/settings/credentials", "GET"); renderCredentials(data.credentials || []); }
+async function saveCredential() {
+  const id = document.getElementById("credentialId").value;
+  const payload = { provider: document.getElementById("credentialProvider").value, label: document.getElementById("credentialLabel").value.trim(), api_key: document.getElementById("credentialApiKey").value, model: document.getElementById("credentialModel").value.trim() };
+  if (!id && !payload.api_key) return showMessage("Enter an API key.");
+  try {
+    if (id) { delete payload.provider; await requestJson(`/api/settings/credentials/${id}`, "PUT", payload); }
+    else await requestJson("/api/settings/credentials", "POST", payload);
+    resetCredentialForm(); await refreshCredentials(); showMessage("API key saved.");
+  } catch (error) { showMessage(error.message); }
+}
+async function editCredential(id) {
+  const data = await requestJson("/api/settings/credentials", "GET"), credential = data.credentials.find(item => item.id === id);
+  if (!credential) return;
+  document.getElementById("credentialId").value = id; document.getElementById("credentialProvider").value = credential.provider;
+  document.getElementById("credentialProvider").disabled = true; document.getElementById("credentialLabel").value = credential.label;
+  document.getElementById("credentialModel").value = credential.model; document.getElementById("credentialApiKey").value = "";
+  document.getElementById("credentialSaveButton").textContent = "Save changes";
+}
+async function selectCredential(id) { try { await requestJson(`/api/settings/credentials/${id}/select`, "POST"); await refreshCredentials(); showMessage("Selected API key for this provider."); } catch (error) { showMessage(error.message); } }
+async function removeCredential(id) {
+  if (!await window.showConfirm({ title: "Remove this API key?", message: "Documents will no longer use this key. You can add it again later.", confirmText: "Remove key", danger: true })) return;
+  try { await requestJson(`/api/settings/credentials/${id}`, "DELETE"); await refreshCredentials(); showMessage("API key removed."); } catch (error) { showMessage(error.message); }
+}
+function resetCredentialForm() { document.getElementById("credentialId").value = ""; document.getElementById("credentialProvider").disabled = false; document.getElementById("credentialLabel").value = ""; document.getElementById("credentialApiKey").value = ""; document.getElementById("credentialModel").value = ""; document.getElementById("credentialSaveButton").textContent = "Add API key"; }
 
 async function saveSettings() {
   const payload = {};
@@ -141,18 +213,11 @@ async function saveSettings() {
   if (webhookUrl !== undefined) payload.webhook_url = webhookUrl;
   if (provider) payload.default_provider = provider;
   if (autoDispatch) payload.auto_dispatch_on_verified = autoDispatch.checked;
-  for (const [id, key] of [["geminiModel", "gemini_model"], ["openaiModel", "openai_model"], ["mistralModel", "mistral_model"], ["openrouterModel", "openrouter_model"]]) {
-    const value = readValue(id); if (value !== undefined) payload[key] = value.trim();
-  }
-  const gemini = readValue("geminiKey"), openai = readValue("openaiKey"), mistral = readValue("mistralKey"), openrouter = readValue("openrouterKey"), secret = readValue("webhookSecret");
-  if (gemini) payload.gemini_api_key = gemini;
-  if (openai) payload.openai_api_key = openai;
-  if (mistral) payload.mistral_api_key = mistral;
-  if (openrouter) payload.openrouter_api_key = openrouter;
+  const secret = readValue("webhookSecret");
   if (secret) payload.webhook_secret = secret;
   try {
     await requestJson("/api/settings", "POST", payload);
-    for (const id of ["geminiKey", "openaiKey", "mistralKey", "openrouterKey", "webhookSecret"]) { const el = document.getElementById(id); if (el) el.value = ""; }
+    const secretInput = document.getElementById("webhookSecret"); if (secretInput) secretInput.value = "";
     showMessage("Settings saved.");
     loadSettings();
   } catch (error) {

@@ -82,15 +82,17 @@ class DocumentExtractor:
 
     @classmethod
     async def extract(cls, file_path: Path, mime_type: str = "application/pdf", account_settings: Optional[Dict[str, Any]] = None) -> ParsedDocumentData:
+        file_path = Path(file_path)
         use_account_credentials = account_settings is not None
         account_settings = account_settings or {}
-        gemini_api_key = account_settings.get("gemini_api_key") or ("" if use_account_credentials else settings.gemini_api_key)
-        openai_api_key = account_settings.get("openai_api_key") or ("" if use_account_credentials else settings.openai_api_key)
-        mistral_api_key = account_settings.get("mistral_api_key", "")
-        openrouter_api_key = account_settings.get("openrouter_api_key", "")
-        gemini_model = account_settings.get("gemini_model") or "gemini-3.1-flash-lite"
-        openai_model = account_settings.get("openai_model") or "gpt-4o-mini"
-        mistral_model = account_settings.get("mistral_model") or "mistral-small-2506"
+        credentials = account_settings.get("provider_credentials") or {}
+        gemini_api_key = credentials.get("gemini", {}).get("api_key") or account_settings.get("gemini_api_key") or ("" if use_account_credentials else settings.gemini_api_key)
+        openai_api_key = credentials.get("openai", {}).get("api_key") or account_settings.get("openai_api_key") or ("" if use_account_credentials else settings.openai_api_key)
+        mistral_api_key = credentials.get("mistral", {}).get("api_key") or account_settings.get("mistral_api_key", "")
+        openrouter_api_key = credentials.get("openrouter", {}).get("api_key") or account_settings.get("openrouter_api_key", "")
+        gemini_model = credentials.get("gemini", {}).get("model") or account_settings.get("gemini_model") or "gemini-3.1-flash-lite"
+        openai_model = credentials.get("openai", {}).get("model") or account_settings.get("openai_model") or "gpt-4o-mini"
+        mistral_model = credentials.get("mistral", {}).get("model") or account_settings.get("mistral_model") or "mistral-small-2506"
         provider = (account_settings.get("default_provider") or settings.default_provider).lower()
 
         # Decide provider
@@ -111,7 +113,7 @@ class DocumentExtractor:
             "gemini": gemini_model,
             "openai": openai_model,
             "mistral": mistral_model,
-            "openrouter": account_settings.get("openrouter_model") or "google/gemini-2.5-flash",
+            "openrouter": credentials.get("openrouter", {}).get("model") or account_settings.get("openrouter_model") or "google/gemini-2.5-flash",
             "heuristic": "pdfplumber layout parser",
         }
         used_provider = {"gemini": "Google Gemini", "openai": "OpenAI", "mistral": "Mistral", "openrouter": "OpenRouter", "heuristic": "Local parser"}.get(provider, provider)
@@ -141,7 +143,7 @@ class DocumentExtractor:
                 used_provider, used_model, extraction_fallback = "Local parser", "pdfplumber layout parser", True
         elif provider == "openrouter" and openrouter_api_key:
             try:
-                model = account_settings.get("openrouter_model") or "google/gemini-2.5-flash"
+                model = credentials.get("openrouter", {}).get("model") or account_settings.get("openrouter_model") or "google/gemini-2.5-flash"
                 parsed_data = await cls._extract_with_compatible_vision(file_path, mime_type, openrouter_api_key, "https://openrouter.ai/api/v1/chat/completions", model)
             except Exception as e:
                 print(f"[Extractor] OpenRouter extraction failed, falling back to layout parser: {e}")
