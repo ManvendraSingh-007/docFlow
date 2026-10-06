@@ -33,7 +33,13 @@ async def process_and_dispatch(doc_id: str, file_path: Path, mime_type: str, use
 
         webhook_url = account_settings.get("webhook_url", "")
         webhook_secret = account_settings.get("webhook_secret", "")
-        if webhook_url and webhook_secret and account_settings.get("auto_dispatch_on_verified"):
+        if (
+            webhook_url
+            and webhook_secret
+            and account_settings.get("auto_dispatch_on_verified")
+            and not parsed_data.extraction_fallback
+            and parsed_data.extraction_provider != "Local parser"
+        ):
             if parsed_data.verification and parsed_data.verification.status == DocumentStatus.VERIFIED:
                 success, code, body, duration = await WebhookDispatcher.dispatch(
                     webhook_url,
@@ -47,6 +53,8 @@ async def process_and_dispatch(doc_id: str, file_path: Path, mime_type: str, use
                 webhook_status = WebhookStatus.DELIVERED if success else WebhookStatus.FAILED
                 webhook_code = code
                 WebhookLogRepository.log(doc_id, webhook_url, code, body, duration, success)
+            elif parsed_data.extraction_fallback or parsed_data.extraction_provider == "Local parser":
+                webhook_status = WebhookStatus.SKIPPED
 
         DocumentRepository.update_parsed_data(doc_id, parsed_data, webhook_status, webhook_code, user_id)
         return None

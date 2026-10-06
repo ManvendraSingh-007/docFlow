@@ -83,6 +83,7 @@ class ParsedDocumentData(BaseModel):
     extraction_model: Optional[str] = None
     extraction_fallback: bool = False
     extraction_requested_provider: Optional[str] = None
+    extraction_error: Optional[str] = None
     notes: Optional[str] = None
     additional_details: List[AdditionalDetail] = Field(default_factory=list)
     # Kept out of parsed_json/API list responses; persisted separately for inspection.

@@ -6,9 +6,6 @@
 <div class="mx-auto max-w-7xl px-4 pt-8 sm:px-6 lg:px-8">
   <header class="mb-8 border-b border-slate-300 pb-6"><p class="text-xs font-semibold uppercase tracking-[.16em] text-slate-500">Workspace settings</p><h1 class="mt-2 text-3xl font-semibold tracking-tight text-slate-900">{{ settings_section|title }}</h1><p class="mt-2 max-w-2xl text-sm text-slate-600">{% if settings_section == 'account' %}Your profile and organization details.{% elif settings_section == 'security' %}Manage your password and account access.{% elif settings_section == 'extraction' %}Choose the provider and model used to read documents.{% else %}Configure automated intake and delivery.{% endif %}</p></header>
   <div id="settingsMessage" class="mb-5 hidden rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm" role="status"></div>
-  <div id="credentialPinDialog" class="fixed inset-0 z-[80] hidden items-center justify-center bg-slate-950/40 p-4" role="dialog" aria-modal="true" aria-labelledby="credentialPinTitle">
-    <div class="w-full max-w-sm rounded-xl border border-slate-200 bg-white p-5 shadow-xl"><h2 id="credentialPinTitle" class="text-base font-semibold text-slate-900">Confirm with your PIN</h2><p id="credentialPinMessage" class="mt-1 text-sm text-slate-600">Enter your API key PIN to continue.</p><label class="mt-4 block text-sm font-medium text-slate-700">PIN<input id="credentialPinInput" type="password" inputmode="numeric" maxlength="12" autocomplete="off" class="mt-1.5 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"></label><div class="mt-4 flex justify-end gap-2"><button type="button" onclick="finishPinPrompt(null)" class="rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700">Cancel</button><button type="button" onclick="finishPinPrompt(document.getElementById('credentialPinInput').value)" class="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white">Continue</button></div></div>
-  </div>
 
   <div class="grid gap-8 lg:grid-cols-[220px_minmax(0,1fr)]">
   <aside class="lg:sticky lg:top-24 lg:self-start rounded-xl border border-slate-300 bg-white p-3 shadow-sm">
@@ -39,7 +36,6 @@
       <label class="text-sm font-medium text-slate-700">New password<input id="newPassword" type="password" minlength="12" autocomplete="new-password" class="mt-1.5 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"></label>
     </div>
     <button onclick="savePassword()" class="mt-4 rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Update password</button>
-    <div class="mt-7 border-t border-slate-200 pt-6"><h3 class="text-sm font-semibold text-slate-900">API key PIN</h3><p class="mt-1 text-sm text-slate-500">Set a PIN that DocFlow will ask for when you add, switch, edit, or remove an API key.</p><p id="credentialPinStatus" class="mt-3 text-xs text-slate-500"></p><div class="mt-3 grid gap-3 sm:grid-cols-2"><label class="text-sm font-medium text-slate-700">Account password<input id="securityPinPassword" type="password" autocomplete="current-password" class="mt-1.5 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"></label><label class="text-sm font-medium text-slate-700">PIN (6–12 digits)<input id="securityPin" type="password" inputmode="numeric" maxlength="12" autocomplete="new-password" class="mt-1.5 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"></label></div><button onclick="saveSecurityPin()" class="mt-3 rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Save API key PIN</button></div>
   </section>{% endif %}
 
   {% if settings_section == 'extraction' %}<section id="extraction" class="card-shell border-slate-300 shadow-md scroll-mt-24 p-6 sm:p-7">
@@ -57,12 +53,11 @@
       <div id="providerHint" class="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-600">Choose a provider to add or select one of its saved API keys.</div>
       <div id="providerKeyPanel" class="hidden rounded-xl border border-slate-200 bg-slate-50 p-4">
         <p class="text-sm text-slate-600">Provider: <strong id="credentialProviderLabel" class="font-semibold text-slate-900"></strong></p>
-        <p id="credentialPinNotice" class="mt-2 hidden rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">Set your API key PIN in <a href="/settings/security" class="font-semibold underline">Security settings</a> before saving or changing keys.</p>
-        <div class="mt-5 grid gap-3 border-t border-slate-200 pt-4 sm:grid-cols-2"><input id="credentialId" type="hidden"><label class="text-sm font-medium text-slate-700">Name<input id="credentialLabel" placeholder="e.g. Finance team" class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal"></label><label class="text-sm font-medium text-slate-700">Model ID<input id="credentialModel" placeholder="Provider model ID" class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal"></label><label class="text-sm font-medium text-slate-700 sm:col-span-2">API key<input id="credentialApiKey" type="password" autocomplete="new-password" placeholder="Paste the API key" class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal"></label><div class="flex gap-2 sm:col-span-2"><button id="credentialSaveButton" onclick="saveCredential()" class="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white">Add API key</button><button onclick="resetCredentialForm()" class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm">Clear</button></div></div>
+        <div class="mt-5 grid gap-3 border-t border-slate-200 pt-4 sm:grid-cols-2"><input id="credentialId" type="hidden"><label class="text-sm font-medium text-slate-700">Name<input id="credentialLabel" placeholder="e.g. Finance team" class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal"></label><label class="text-sm font-medium text-slate-700">Model ID<input id="credentialModel" placeholder="Provider model ID" class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal"></label><label class="text-sm font-medium text-slate-700 sm:col-span-2">API key<input id="credentialApiKey" type="password" autocomplete="off" spellcheck="false" placeholder="Paste the API key" class="mt-1 w-full select-none rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal"></label><div class="flex gap-2 sm:col-span-2"><button id="credentialSaveButton" onclick="saveCredential()" class="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white">Add API key</button><button onclick="resetCredentialForm()" class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm">Clear</button></div></div>
       </div>
     </div>
     <section id="availableCredentialsSection" class="hidden mt-5 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div class="mb-3"><h3 class="text-sm font-semibold text-slate-900">Available API keys</h3><p class="mt-1 text-xs text-slate-500">Saved keys are masked. Enter your PIN when switching, editing, or removing one.</p></div>
+      <div class="mb-3"><h3 class="text-sm font-semibold text-slate-900">Available API keys</h3><p class="mt-1 text-xs text-slate-500">Only one saved key is in use at a time. Keys stay masked in this list.</p></div>
       <div id="credentialList" class="space-y-2"></div>
     </section>
   </section>{% endif %}
@@ -82,7 +77,7 @@
     <div class="mt-5 space-y-4">
       <label class="block text-sm font-medium text-slate-700">Destination URL<input id="webhookUrl" type="url" placeholder="https://" class="mt-1.5 w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-normal"></label>
       <label class="block text-sm font-medium text-slate-700">Signing secret<input id="webhookSecret" type="password" autocomplete="new-password" placeholder="Leave blank to keep saved secret" class="mt-1.5 w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-normal"></label>
-      <label class="flex items-center gap-2 text-sm text-slate-700"><input id="autoDispatch" type="checkbox" class="h-4 w-4 rounded border-slate-300">Send invoices automatically when totals match</label>
+      <label class="flex items-center gap-2 text-sm text-slate-700"><input id="autoDispatch" type="checkbox" class="h-4 w-4 rounded border-slate-300">Send automatically when AI extraction succeeds and totals match</label>
       <div class="flex flex-wrap gap-3">
         <button onclick="saveSettings()" class="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800">Save webhook settings</button>
         <button onclick="testWebhook()" class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Send test</button>
@@ -127,8 +122,7 @@ async function loadSettings() {
     if (data.default_provider === "auto") await requestJson("/api/settings", "POST", { default_provider: defaultProvider || "heuristic" });
     updateProviderPanel();
     const autoDispatch = document.getElementById("autoDispatch"); if (autoDispatch) autoDispatch.checked = data.auto_dispatch_on_verified;
-    loadCredentials();
-    loadCredentialPinStatus();
+    await loadCredentials();
     const inboundStatus = document.getElementById("inboundTokenStatus");
     if (inboundStatus) inboundStatus.textContent = data.inbound_token_configured ? "A token is active." : "No token created.";
   } catch (error) {
@@ -139,52 +133,11 @@ async function loadSettings() {
 const providerNames = { gemini: "Google Gemini", openai: "OpenAI", mistral: "Mistral", openrouter: "OpenRouter" };
 const providerModels = { gemini: "gemini-3.1-flash-lite", openai: "gpt-4o-mini", mistral: "mistral-small-2506", openrouter: "google/gemini-2.5-flash" };
 let savedCredentials = [];
-let pinPromptResolver = null;
-let credentialPinConfigured = false;
 function escapeHtml(value) { return String(value).replace(/[&<>"']/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch])); }
-
-async function loadCredentialPinStatus() {
-  try {
-    const response = await fetch("/api/settings/credentials/status"), data = await response.json();
-    credentialPinConfigured = Boolean(data.pin_configured);
-    const status = document.getElementById("credentialPinStatus");
-    if (status) status.textContent = credentialPinConfigured ? "An API key PIN is set. Saving a new PIN replaces it." : "No API key PIN has been set.";
-    document.getElementById("credentialPinNotice")?.classList.toggle("hidden", credentialPinConfigured);
-  } catch (error) {
-    const status = document.getElementById("credentialPinStatus");
-    if (status) status.textContent = "Could not load API key PIN status.";
-  }
-}
-
-async function saveSecurityPin() {
-  try {
-    await requestJson("/api/settings/credentials/pin", "POST", { current_password: document.getElementById("securityPinPassword").value, pin: document.getElementById("securityPin").value });
-    document.getElementById("securityPinPassword").value = ""; document.getElementById("securityPin").value = "";
-    showMessage("API key PIN saved."); await loadCredentialPinStatus();
-  } catch (error) { showMessage(error.message); }
-}
-
-function finishPinPrompt(value) {
-  const dialog = document.getElementById("credentialPinDialog");
-  dialog.classList.add("hidden"); dialog.classList.remove("flex");
-  document.getElementById("credentialPinInput").value = "";
-  if (pinPromptResolver) { pinPromptResolver(value); pinPromptResolver = null; }
-}
-function requestCredentialPin(message = "Enter your API key PIN to continue.") {
-  document.getElementById("credentialPinMessage").textContent = message;
-  const dialog = document.getElementById("credentialPinDialog");
-  dialog.classList.remove("hidden"); dialog.classList.add("flex");
-  const input = document.getElementById("credentialPinInput"); input.focus();
-  input.onkeydown = event => {
-    if (event.key === "Enter") finishPinPrompt(input.value);
-    if (event.key === "Escape") finishPinPrompt(null);
-  };
-  return new Promise(resolve => { pinPromptResolver = resolve; });
-}
 
 async function loadCredentials() {
   if (!document.getElementById("credentialList")) return;
-  try { const data = await requestJson("/api/settings/credentials", "GET"); savedCredentials = data.credentials || []; renderCredentials(); }
+  try { const data = await requestJson("/api/settings/credentials", "GET"); savedCredentials = data.credentials || []; renderCredentials(); updateProviderPanel(); }
   catch (error) { showMessage(error.message); }
 }
 
@@ -195,7 +148,7 @@ function renderCredentials() {
   if (!list || !section) return;
   section.classList.toggle("hidden", credentials.length === 0);
   if (!credentials.length) { list.innerHTML = ""; return; }
-  list.innerHTML = credentials.map(c => `<div class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white p-3"><div class="min-w-0"><p class="truncate text-sm font-medium text-slate-800">${escapeHtml(c.label)} <span class="font-normal text-slate-500">· ${escapeHtml(providerNames[c.provider] || c.provider)}</span> ${c.is_selected ? '<span class="ml-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700">Selected for provider</span>' : ''}</p><p class="mt-1 font-mono text-xs text-slate-500">••••••••${escapeHtml(c.key_suffix || "")} · ${escapeHtml(c.model || "")}</p></div><div class="flex gap-2"><button onclick="selectCredential('${c.id}')" class="rounded border border-slate-300 px-2.5 py-1.5 text-xs">${c.is_selected ? "Selected" : "Use this key"}</button><button onclick="editCredential('${c.id}')" class="rounded border border-slate-300 px-2.5 py-1.5 text-xs">Edit</button><button onclick="removeCredential('${c.id}')" class="rounded border border-red-200 px-2.5 py-1.5 text-xs text-red-700">Remove</button></div></div>`).join("");
+  list.innerHTML = credentials.map(c => `<div class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white p-3"><div class="min-w-0"><p class="truncate text-sm font-medium text-slate-800">${escapeHtml(c.label)} <span class="font-normal text-slate-500">· ${escapeHtml(providerNames[c.provider] || c.provider)}</span> ${c.is_selected ? '<span class="ml-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700">In use</span>' : ''}</p><p class="mt-1 select-none font-mono text-xs text-slate-500" oncopy="return false" oncut="return false" oncontextmenu="return false">•••••••••••••••• · ${escapeHtml(c.model || "")}</p></div><div class="flex gap-2"><button onclick="selectCredential('${c.id}')" class="rounded border border-slate-300 px-2.5 py-1.5 text-xs">${c.is_selected ? "In use" : "Use this key"}</button><button onclick="editCredential('${c.id}')" class="rounded border border-slate-300 px-2.5 py-1.5 text-xs">Edit</button><button onclick="removeCredential('${c.id}')" class="rounded border border-red-200 px-2.5 py-1.5 text-xs text-red-700">Remove</button></div></div>`).join("");
 }
 
 async function saveCredential() {
@@ -203,14 +156,11 @@ async function saveCredential() {
   const provider = document.getElementById("defaultProvider").value;
   const key = document.getElementById("credentialApiKey").value.trim();
   if (!id && !key) return showMessage("Paste an API key first.");
-  if (!credentialPinConfigured) return showMessage("Set an API key PIN in Security settings before saving keys.");
-  const pin = await requestCredentialPin(id ? "Enter your PIN to update this API key." : "Enter your PIN to save this API key.");
-  if (!pin) return;
-  const payload = { label: document.getElementById("credentialLabel").value.trim() || `${providerNames[provider]} key`, model: document.getElementById("credentialModel").value.trim(), api_key: key, pin };
+  const payload = { label: document.getElementById("credentialLabel").value.trim() || `${providerNames[provider]} key`, model: document.getElementById("credentialModel").value.trim(), api_key: key };
   try {
     if (id) await requestJson(`/api/settings/credentials/${id}`, "PUT", payload);
     else await requestJson("/api/settings/credentials", "POST", { ...payload, provider });
-    resetCredentialForm(); await loadCredentials(); showMessage("API key saved.");
+    resetCredentialForm(); await loadSettings(); showMessage("API key saved.");
   } catch (error) { showMessage(error.message); }
 }
 function editCredential(id) {
@@ -223,16 +173,21 @@ function editCredential(id) {
   document.getElementById("credentialLabel").focus();
 }
 async function selectCredential(id) {
-  const pin = await requestCredentialPin("Enter your PIN to switch the API key used by this provider."); if (!pin) return;
-  try { await requestJson(`/api/settings/credentials/${id}/select`, "POST", { pin }); await loadCredentials(); showMessage("Selected API key for this provider."); }
+  try { await requestJson(`/api/settings/credentials/${id}/select`, "POST"); await loadSettings(); showMessage("API key selected."); }
   catch (error) { showMessage(error.message); }
 }
 async function removeCredential(id) {
   if (!await window.showConfirm({ title: "Remove this API key?", message: "Documents will no longer use this key. You can add it again later.", confirmText: "Remove key", danger: true })) return;
-  const pin = await requestCredentialPin("Enter your PIN to remove this API key."); if (!pin) return;
-  try { await requestJson(`/api/settings/credentials/${id}/delete`, "POST", { pin }); await loadCredentials(); showMessage("API key removed."); }
+  try { await requestJson(`/api/settings/credentials/${id}/delete`, "POST"); await loadSettings(); showMessage("API key removed."); }
   catch (error) { showMessage(error.message); }
 }
+
+document.getElementById("credentialApiKey")?.addEventListener("copy", event => event.preventDefault());
+document.getElementById("credentialApiKey")?.addEventListener("cut", event => event.preventDefault());
+document.getElementById("credentialApiKey")?.addEventListener("contextmenu", event => event.preventDefault());
+document.getElementById("credentialApiKey")?.addEventListener("keydown", event => {
+  if ((event.ctrlKey || event.metaKey) && ["c", "x"].includes(event.key.toLowerCase())) event.preventDefault();
+});
 function resetCredentialForm() {
   document.getElementById("credentialId").value = ""; document.getElementById("credentialLabel").value = "";
   document.getElementById("credentialApiKey").value = ""; document.getElementById("credentialApiKey").placeholder = "Paste the API key";
@@ -324,6 +279,11 @@ function updateProviderPanel() {
   if (hint) hint.textContent = usesProvider ? "Add an API key for this provider or choose one already saved below." : "The local parser runs without an API key.";
   const providerLabel = document.getElementById("credentialProviderLabel");
   if (providerLabel) providerLabel.textContent = providerNames[provider] || "";
+  const providerKey = savedCredentials.find(item => item.provider === provider);
+  const selectedKey = savedCredentials.find(item => item.provider === provider && item.is_selected);
+  if (hint && usesProvider) {
+    hint.textContent = selectedKey ? `${providerNames[provider]} is selected for new documents.` : providerKey ? `Choose a saved ${providerNames[provider]} key below, or add another key.` : `Add a ${providerNames[provider]} API key to use AI extraction.`;
+  }
   if (document.getElementById("credentialId") && !document.getElementById("credentialId").value) {
     const model = document.getElementById("credentialModel");
     if (model && !model.value) model.value = providerModels[provider] || "";
@@ -334,7 +294,7 @@ document.addEventListener("DOMContentLoaded", () => {
   loadSettings();
   document.getElementById("defaultProvider")?.addEventListener("change", async event => {
     resetCredentialForm(); updateProviderPanel();
-    try { await requestJson("/api/settings", "POST", { default_provider: event.target.value }); showMessage("Default provider saved."); }
+    try { await requestJson("/api/settings", "POST", { default_provider: event.target.value }); await loadCredentials(); updateProviderPanel(); showMessage("Default provider saved."); }
     catch (error) { showMessage(error.message); }
   });
   updateProviderPanel();

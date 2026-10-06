@@ -152,6 +152,9 @@
         {% else %}
           <p class="mb-4 text-xs text-slate-500">Provider and model were not recorded for this older document.</p>
         {% endif %}
+        {% if doc.data and doc.data.extraction_error %}
+          <p class="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">{{ doc.data.extraction_error }}</p>
+        {% endif %}
 
         <div class="space-y-3">
           {% if doc.data and doc.data.verification and doc.data.verification.checks %}
@@ -463,6 +466,7 @@ async function saveAndRevalidate() {
     extraction_model: parsedDoc.extraction_model || null,
     extraction_fallback: Boolean(parsedDoc.extraction_fallback),
     extraction_requested_provider: parsedDoc.extraction_requested_provider || null,
+    extraction_error: parsedDoc.extraction_error || null,
     notes: parsedDoc.notes || null,
     additional_details: parsedDoc.additional_details || [],
     summary: {

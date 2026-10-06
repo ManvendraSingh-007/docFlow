@@ -123,12 +123,14 @@ class DocumentExtractor:
         used_provider = {"gemini": "Google Gemini", "openai": "OpenAI", "mistral": "Mistral", "openrouter": "OpenRouter", "heuristic": "Local parser"}.get(provider, provider)
         used_model = model_by_provider.get(provider, "")
         extraction_fallback = False
+        extraction_error = None
         parsed_data = None
         if provider == "gemini" and gemini_api_key:
             try:
                 parsed_data = await cls._extract_with_gemini(file_path, mime_type, gemini_api_key, gemini_model)
             except Exception as e:
                 print(f"[Extractor] Gemini extraction failed, falling back to layout parser: {e}")
+                extraction_error = f"Gemini request failed: {e}"
                 parsed_data = await cls._extract_smart_layout(file_path)
                 used_provider, used_model, extraction_fallback = "Local parser", "pdfplumber layout parser", True
         elif provider == "openai" and openai_api_key:
@@ -136,6 +138,7 @@ class DocumentExtractor:
                 parsed_data = await cls._extract_with_openai(file_path, mime_type, openai_api_key, openai_model)
             except Exception as e:
                 print(f"[Extractor] OpenAI extraction failed, falling back to layout parser: {e}")
+                extraction_error = f"OpenAI request failed: {e}"
                 parsed_data = await cls._extract_smart_layout(file_path)
                 used_provider, used_model, extraction_fallback = "Local parser", "pdfplumber layout parser", True
         elif provider == "mistral" and mistral_api_key:
@@ -143,6 +146,7 @@ class DocumentExtractor:
                 parsed_data = await cls._extract_with_compatible_vision(file_path, mime_type, mistral_api_key, "https://api.mistral.ai/v1/chat/completions", mistral_model)
             except Exception as e:
                 print(f"[Extractor] Mistral extraction failed, falling back to layout parser: {e}")
+                extraction_error = f"Mistral request failed: {e}"
                 parsed_data = await cls._extract_smart_layout(file_path)
                 used_provider, used_model, extraction_fallback = "Local parser", "pdfplumber layout parser", True
         elif provider == "openrouter" and openrouter_api_key:
@@ -151,6 +155,7 @@ class DocumentExtractor:
                 parsed_data = await cls._extract_with_compatible_vision(file_path, mime_type, openrouter_api_key, "https://openrouter.ai/api/v1/chat/completions", model)
             except Exception as e:
                 print(f"[Extractor] OpenRouter extraction failed, falling back to layout parser: {e}")
+                extraction_error = f"OpenRouter request failed: {e}"
                 parsed_data = await cls._extract_smart_layout(file_path)
                 used_provider, used_model, extraction_fallback = "Local parser", "pdfplumber layout parser", True
         else:
@@ -158,6 +163,7 @@ class DocumentExtractor:
             if provider != "heuristic":
                 extraction_fallback = True
                 used_provider, used_model = "Local parser", "pdfplumber layout parser"
+                extraction_error = f"No active API key is available for {provider}. Select a saved key or add one in Extraction settings."
 
         # Keep the readable PDF text alongside vision extraction too. It provides
         # an audit trail for details that do not fit the structured invoice fields.
@@ -175,6 +181,7 @@ class DocumentExtractor:
             parsed_data.extraction_model = used_model
         parsed_data.extraction_fallback = extraction_fallback
         parsed_data.extraction_requested_provider = requested_provider
+        parsed_data.extraction_error = extraction_error
         # Always run math validation check on the extracted data
         DocumentValidator.validate(parsed_data)
         return parsed_data
@@ -196,7 +203,9 @@ class DocumentExtractor:
         last_error = None
 
         for model_name in models_to_try:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
+            from urllib.parse import quote
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{quote(model_name, safe='')}:generateContent"
+            headers = {"x-goog-api-key": api_key, "Content-Type": "application/json"}
             payload = {
                 "contents": [
                     {
@@ -218,11 +227,25 @@ class DocumentExtractor:
 
             try:
                 async with httpx.AsyncClient(timeout=45.0) as client:
-                    resp = await client.post(url, json=payload)
-                    resp.raise_for_status()
-                    data = resp.json()
-                    text_content = data["candidates"][0]["content"]["parts"][0]["text"]
-                    parsed_dict = json.loads(text_content)
+                    resp = await client.post(url, headers=headers, json=payload)
+                    try:
+                        data = resp.json()
+                    except ValueError as exc:
+                        raise RuntimeError(f"Gemini returned a non-JSON response (HTTP {resp.status_code}).") from exc
+                    if resp.is_error:
+                        api_error = data.get("error") if isinstance(data, dict) else None
+                        message = api_error.get("message") if isinstance(api_error, dict) else None
+                        raise RuntimeError(f"Gemini request failed (HTTP {resp.status_code}): {message or 'no error details returned'}")
+                    candidates = data.get("candidates") or []
+                    if not candidates:
+                        reason = (data.get("promptFeedback") or {}).get("blockReason") or "no candidates returned"
+                        raise RuntimeError(f"Gemini returned no extraction candidate: {reason}.")
+                    content = candidates[0].get("content") or {}
+                    text_content = "\n".join(part.get("text", "") for part in content.get("parts", []) if isinstance(part, dict) and isinstance(part.get("text"), str))
+                    if not text_content.strip():
+                        reason = candidates[0].get("finishReason") or "empty response"
+                        raise RuntimeError(f"Gemini returned no extraction text (finish reason: {reason}).")
+                    parsed_dict = cls._decode_model_json(text_content)
                     parsed_data = cls._parse_ai_result(parsed_dict)
                     parsed_data.extraction_model = data.get("modelVersion") or model_name
                     return parsed_data
