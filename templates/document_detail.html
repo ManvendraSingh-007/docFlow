@@ -55,6 +55,13 @@
     </div>
   </div>
 
+  {% if doc.status == 'PROCESSING' %}
+    <div class="mt-4 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-900" role="status">
+      <span class="material-symbols-outlined mt-0.5" style="font-size:18px;">hourglass_top</span>
+      <p>Extraction is still processing. This page will refresh when the result is ready.</p>
+    </div>
+  {% endif %}
+
   <div class="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-12">
     <div class="space-y-6 lg:col-span-5">
       <div class="card-shell flex h-[760px] flex-col overflow-hidden">
@@ -311,6 +318,22 @@
 const docId = "{{ doc.id }}";
 const documentCurrency = "{{ doc.data.summary.currency if doc.data and doc.data.summary else 'USD' }}";
 let parsedDoc = {{ doc.parsed_json|safe if doc.parsed_json else '{}' }};
+const documentIsProcessing = {{ 'true' if doc.status == 'PROCESSING' else 'false' }};
+
+async function refreshWhenExtractionFinishes() {
+  if (!documentIsProcessing) return;
+  try {
+    const response = await fetch(`/api/documents/${docId}/processing-status`);
+    if (response.ok) {
+      const data = await response.json();
+      if (!data.is_processing) { window.location.reload(); return; }
+    }
+  } catch (error) {
+    // Keep checking while the page still represents a processing document.
+  }
+  window.setTimeout(refreshWhenExtractionFinishes, 4000);
+}
+if (documentIsProcessing) window.setTimeout(refreshWhenExtractionFinishes, 1500);
 
 function recalcRow(el) {
   markManualDataEdited();

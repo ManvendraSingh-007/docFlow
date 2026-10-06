@@ -121,6 +121,14 @@ def get_processing_status(user: dict = Depends(current_user)):
     stats = DocumentRepository.get_stats(user_id=user["id"])
     return {"is_processing": stats["processing_count"] > 0}
 
+
+@router.get("/{doc_id}/processing-status")
+def get_document_processing_status(doc_id: str, user: dict = Depends(current_user)):
+    doc = DocumentRepository.get_by_id(doc_id, user_id=user["id"])
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    return {"status": doc["status"], "is_processing": doc["status"] == DocumentStatus.PROCESSING.value}
+
 @router.get("/{doc_id}")
 def get_document(doc_id: str, user: dict = Depends(current_user)):
     doc = DocumentRepository.get_by_id(doc_id, user_id=user["id"])

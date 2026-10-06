@@ -266,10 +266,37 @@ class DocumentExtractor:
 
     @staticmethod
     def _parse_ai_result(parsed_dict: Dict[str, Any]) -> ParsedDocumentData:
-        summary = parsed_dict.get("summary")
-        if isinstance(summary, dict) and not summary.get("currency"):
-            summary["currency"] = "UNKNOWN"
-        return ParsedDocumentData(**parsed_dict)
+        normalized = dict(parsed_dict)
+        summary = normalized.get("summary")
+        if summary is None:
+            summary = {}
+        if isinstance(summary, dict):
+            summary = dict(summary)
+            if not summary.get("currency"):
+                summary["currency"] = "UNKNOWN"
+            for field in ("subtotal", "tax_amount", "shipping_amount", "discount_amount", "grand_total"):
+                if summary.get(field) is None:
+                    summary[field] = 0.0
+            normalized["summary"] = summary
+
+        line_items = normalized.get("line_items")
+        if line_items is None:
+            line_items = []
+        if isinstance(line_items, list):
+            normalized_items = []
+            for index, item in enumerate(line_items):
+                if not isinstance(item, dict):
+                    normalized_items.append(item)
+                    continue
+                item = dict(item)
+                if item.get("line_no") is None:
+                    item["line_no"] = index + 1
+                for field in ("quantity", "unit_price", "line_total"):
+                    if item.get(field) is None:
+                        item[field] = 0.0
+                normalized_items.append(item)
+            normalized["line_items"] = normalized_items
+        return ParsedDocumentData(**normalized)
 
     @staticmethod
     def _pdf_image_data_urls(file_path: Path) -> List[str]:
