@@ -56,9 +56,8 @@
   </div>
 
   {% if doc.status == 'PROCESSING' %}
-    <div class="mt-4 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-900" role="status">
-      <span class="material-symbols-outlined mt-0.5" style="font-size:18px;">hourglass_top</span>
-      <p>Extraction is still processing. This page will refresh when the result is ready.</p>
+    <div class="mt-4 inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700" role="status" aria-live="polite">
+      <span>Extracting<span id="extractionDots" aria-hidden="true">.</span></span>
     </div>
   {% endif %}
 
@@ -334,6 +333,14 @@ async function refreshWhenExtractionFinishes() {
   window.setTimeout(refreshWhenExtractionFinishes, 4000);
 }
 if (documentIsProcessing) window.setTimeout(refreshWhenExtractionFinishes, 1500);
+if (documentIsProcessing) {
+  const dots = document.getElementById("extractionDots");
+  const frames = [".", "..", "..."];
+  let frame = 0;
+  window.setInterval(() => {
+    if (dots) dots.textContent = frames[frame++ % frames.length];
+  }, 400);
+}
 
 function recalcRow(el) {
   markManualDataEdited();
