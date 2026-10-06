@@ -1,9 +1,12 @@
 import io
 import re
 import uuid
+import asyncio
 import pytest
 from fastapi.testclient import TestClient
 from backend.main import app
+import backend.api.documents as documents_api
+from backend.models.document import ParsedDocumentData, WebhookStatus
 
 
 @pytest.fixture(scope="module")
@@ -72,3 +75,38 @@ def test_settings_api(client):
     data = response.json()
     assert "email" in data
     assert "gemini_api_key" not in data
+
+
+def test_public_startpage_contains_login_signup_and_plans():
+    with TestClient(app) as anonymous_client:
+        response = anonymous_client.get("/")
+    assert response.status_code == 200
+    assert 'action="/login"' in response.text
+    assert 'action="/register"' in response.text
+    assert "Basic" in response.text and "Pro" in response.text and "Ultra" in response.text
+
+
+def test_extracted_data_is_saved_without_webhook_settings(monkeypatch, tmp_path):
+    parsed = ParsedDocumentData(document_number="INV-LOCAL-1")
+    updates = []
+
+    monkeypatch.setattr(
+        documents_api.AccountSettingsRepository,
+        "get",
+        classmethod(lambda cls, user_id: {}),
+    )
+
+    async def fake_extract(cls, file_path, mime_type, account_settings):
+        return parsed
+
+    monkeypatch.setattr(documents_api.DocumentExtractor, "extract", classmethod(fake_extract))
+    monkeypatch.setattr(
+        documents_api.DocumentRepository,
+        "update_parsed_data",
+        classmethod(lambda cls, *args: updates.append(args)),
+    )
+
+    asyncio.run(documents_api.process_and_dispatch("doc-1", tmp_path / "invoice.pdf", "application/pdf", "user-1"))
+
+    assert len(updates) == 1
+    assert updates[0] == ("doc-1", parsed, WebhookStatus.PENDING, None, "user-1")

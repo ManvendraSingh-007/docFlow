@@ -71,7 +71,7 @@
     {% if docs %}
       <div class="grid gap-4 p-4 md:grid-cols-2 xl:grid-cols-3">
         {% for doc in docs %}
-          <div class="rounded-xl border border-slate-200 bg-slate-50 p-4 shadow-sm transition-colors hover:bg-white">
+          <div class="document-card rounded-xl border border-slate-200 bg-slate-50 p-4 shadow-sm transition-colors hover:bg-white" data-document-status="{{ doc.status }}">
             <div class="flex items-start justify-between gap-3">
               <div class="min-w-0">
                 <p class="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">{% if doc.source == 'email_inbound' %}Email{% else %}Upload{% endif %}</p>
@@ -139,8 +139,10 @@ async function handleFileUpload(event) {
       headers: { "X-CSRF-Token": document.querySelector('meta[name="csrf-token"]').content },
       body: formData
     });
-    await res.json();
-    feedback.innerText = "Uploaded! Reloading stream...";
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || "Upload failed");
+    if (!data.uploaded) throw new Error("No supported documents were accepted. Check file type and 25 MB size limit.");
+    feedback.innerText = `Uploaded ${data.uploaded} document(s). Waiting for extraction...`;
     setTimeout(() => window.location.reload(), 1200);
   } catch (err) {
     alert("Upload failed: " + err.message);
@@ -167,5 +169,24 @@ async function deleteDoc(id) {
     alert("Error deleting document: " + e.message);
   }
 }
+
+async function refreshAfterProcessing() {
+  if (!document.querySelector('[data-document-status="PROCESSING"]')) return;
+  try {
+    const response = await fetch("/api/documents?limit=50");
+    if (response.ok) {
+      const data = await response.json();
+      if (!data.documents.some(doc => doc.status === "PROCESSING")) {
+        window.location.reload();
+        return;
+      }
+    }
+  } catch (error) {
+    // Retry while the processing state remains visible.
+  }
+  window.setTimeout(refreshAfterProcessing, 2500);
+}
+
+document.addEventListener("DOMContentLoaded", refreshAfterProcessing);
 </script>
 {% endblock %}

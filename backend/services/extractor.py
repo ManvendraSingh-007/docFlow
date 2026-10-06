@@ -130,7 +130,7 @@ class DocumentExtractor:
             f"Extract all information accurately from the document and return only valid JSON."
         )
 
-        models_to_try = ["gemini-2.5-flash", "gemini-2.0-flash"]
+        models_to_try = ["gemini-3.1-flash-lite"]
         last_error = None
 
         for model_name in models_to_try:

@@ -46,7 +46,7 @@ async def process_and_dispatch(doc_id: str, file_path: Path, mime_type: str, use
                 webhook_code = code
                 WebhookLogRepository.log(doc_id, webhook_url, code, body, duration, success)
 
-            DocumentRepository.update_parsed_data(doc_id, parsed_data, webhook_status, webhook_code, user_id)
+        DocumentRepository.update_parsed_data(doc_id, parsed_data, webhook_status, webhook_code, user_id)
     except Exception as e:
         print(f"[Worker] Error processing document {doc_id}: {e}")
         # Update as failed
