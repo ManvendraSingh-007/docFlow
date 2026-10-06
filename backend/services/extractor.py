@@ -270,14 +270,66 @@ class DocumentExtractor:
 
         async with httpx.AsyncClient(timeout=45.0) as client:
             resp = await client.post(endpoint, headers=headers, json=payload)
-            resp.raise_for_status()
-            data = resp.json()
+            try:
+                data = resp.json()
+            except ValueError as exc:
+                raise RuntimeError(
+                    f"Provider returned a non-JSON response (HTTP {resp.status_code}, "
+                    f"content type {resp.headers.get('content-type', 'unknown')})."
+                ) from exc
+            if resp.is_error:
+                error = data.get("error") if isinstance(data, dict) else None
+                message = error.get("message") if isinstance(error, dict) else None
+                raise RuntimeError(f"Provider request failed (HTTP {resp.status_code}): {message or 'no error details returned'}")
 
-        text_content = data["choices"][0]["message"]["content"]
-        parsed_dict = json.loads(text_content)
+        choices = data.get("choices") if isinstance(data, dict) else None
+        if not choices or not isinstance(choices[0], dict):
+            raise RuntimeError("Provider returned no completion choices.")
+        choice = choices[0]
+        message = choice.get("message") or {}
+        text_content = message.get("content") if isinstance(message, dict) else None
+        if isinstance(text_content, list):
+            text_content = "\n".join(
+                block.get("text", "") for block in text_content
+                if isinstance(block, dict) and isinstance(block.get("text"), str)
+            )
+        if not isinstance(text_content, str) or not text_content.strip():
+            finish_reason = choice.get("finish_reason") or "unknown"
+            refusal = message.get("refusal") if isinstance(message, dict) else None
+            detail = f" Refusal: {refusal[:240]}" if isinstance(refusal, str) and refusal else ""
+            raise RuntimeError(
+                f"Provider returned an empty extraction response (finish reason: {finish_reason}).{detail} "
+                "Check that the selected model supports image input, or choose a vision-capable model."
+            )
+
+        parsed_dict = cls._decode_model_json(text_content)
         parsed_data = cls._parse_ai_result(parsed_dict)
         parsed_data.extraction_model = data.get("model") or model
         return parsed_data
+
+    @staticmethod
+    def _decode_model_json(text_content: str) -> Dict[str, Any]:
+        candidate = text_content.strip()
+        candidate = re.sub(r"^```(?:json)?\s*|\s*```$", "", candidate, flags=re.IGNORECASE).strip()
+        candidate = re.sub(r"<think>.*?</think>", "", candidate, flags=re.IGNORECASE | re.DOTALL).strip()
+        try:
+            decoded = json.loads(candidate)
+        except json.JSONDecodeError:
+            decoded = None
+            # Some compatible models add a short preamble despite being asked
+            # for JSON. Decode the first valid JSON object without logging its text.
+            decoder = json.JSONDecoder()
+            for index, char in enumerate(candidate):
+                if char != "{":
+                    continue
+                try:
+                    decoded, _ = decoder.raw_decode(candidate[index:])
+                    break
+                except json.JSONDecodeError:
+                    continue
+        if not isinstance(decoded, dict):
+            raise ValueError("Provider response did not contain a valid JSON object. Check the selected model's JSON and vision support.")
+        return decoded
 
     @staticmethod
     def _parse_ai_result(parsed_dict: Dict[str, Any]) -> ParsedDocumentData:
