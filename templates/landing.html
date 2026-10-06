@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="DocFlow turns incoming invoices into clear, verified records. Review documents, catch discrepancies, and keep your operations moving.">
+  <title>DocFlow — Invoice review, made clear</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    :root{color-scheme:light}body{font-family:Inter,sans-serif}.display{font-family:Manrope,Inter,sans-serif}.material-symbols-outlined{font-family:'Material Symbols Outlined';font-size:20px;vertical-align:middle}
+    html{scroll-behavior:smooth;scroll-padding-top:5rem}.reveal{opacity:0;transform:translateY(20px);transition:opacity .7s ease,transform .7s cubic-bezier(.2,.7,.2,1)}.reveal.visible{opacity:1;transform:translateY(0)}.delay-1{transition-delay:.12s}.delay-2{transition-delay:.22s}
+    @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}.reveal{opacity:1;transform:none;transition:none}}
+  </style>
+</head>
+<body class="bg-white text-slate-900 antialiased selection:bg-slate-900 selection:text-white">
+  <header class="sticky top-0 z-40 border-b border-slate-200/80 bg-white/90 backdrop-blur-xl">
+    <div class="mx-auto flex h-[72px] max-w-7xl items-center justify-between px-5 sm:px-8">
+      <a href="#top" class="flex items-center gap-2.5" aria-label="DocFlow home"><span class="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-900 text-white"><span class="material-symbols-outlined">bolt</span></span><span class="display text-lg font-extrabold tracking-tight">Doc<span class="text-slate-500">Flow</span></span></a>
+      <nav class="hidden items-center gap-8 text-sm font-medium text-slate-600 sm:flex" aria-label="Main navigation"><a href="#workflow" class="transition hover:text-slate-950">How it works</a><a href="#capabilities" class="transition hover:text-slate-950">Capabilities</a></nav>
+      <div class="flex items-center gap-2 sm:gap-3"><a href="/login" class="rounded-lg px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100">Sign in</a><a href="/register" class="rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-700">Get started</a></div>
+    </div>
+  </header>
+
+  <main id="top">
+    <section class="relative isolate overflow-hidden bg-[#f7f8fa]">
+      <div class="absolute -right-48 -top-56 -z-10 h-[600px] w-[600px] rounded-full border border-slate-200/70"></div><div class="absolute -right-24 -top-32 -z-10 h-[360px] w-[360px] rounded-full border border-slate-200/70"></div>
+      <div class="mx-auto grid max-w-7xl items-center gap-12 px-5 py-16 sm:px-8 sm:py-24 lg:grid-cols-[.9fr_1.1fr] lg:gap-16 lg:py-28">
+        <div class="reveal"><p class="mb-6 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-semibold text-slate-600 shadow-sm"><span class="material-symbols-outlined text-slate-500" style="font-size:16px">description</span>Invoice intake and review</p>
+          <h1 class="display max-w-xl text-4xl font-semibold leading-[1.08] tracking-[-.045em] text-slate-950 sm:text-5xl lg:text-[3.65rem]">Know what’s in every invoice. <span class="text-slate-400">Move forward with confidence.</span></h1>
+          <p class="mt-6 max-w-lg text-base leading-7 text-slate-600">DocFlow turns incoming documents into organized, review-ready records, so your team can spot what matters and keep work moving.</p>
+          <div class="mt-8 flex flex-wrap items-center gap-3"><a href="/register" class="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-5 py-3 text-sm font-semibold text-white shadow-md shadow-slate-900/10 transition hover:-translate-y-0.5 hover:bg-slate-700">Create your workspace<span class="material-symbols-outlined" style="font-size:18px">arrow_forward</span></a><a href="#workflow" class="rounded-lg px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-white">See how it works</a></div>
+          <div class="mt-8 flex items-center gap-2 text-xs text-slate-500"><span class="material-symbols-outlined text-slate-400" style="font-size:17px">lock</span>Your documents stay in your account.</div>
+        </div>
+        <div class="reveal delay-1 relative"><div class="absolute -inset-4 rounded-[28px] bg-gradient-to-br from-slate-200/70 via-transparent to-slate-100/70 blur-2xl"></div><div class="relative overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_28px_80px_-36px_rgba(15,23,42,.32)]"><div class="flex items-center justify-between border-b border-slate-100 px-4 py-3 sm:px-5"><div class="flex items-center gap-2"><span class="flex h-7 w-7 items-center justify-center rounded-md bg-slate-900 text-white"><span class="material-symbols-outlined" style="font-size:16px">description</span></span><span class="text-xs font-semibold text-slate-700">Document review</span></div><span class="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-semibold text-slate-600">Review screen</span></div><img src="/static/docflow-preview.png" alt="DocFlow document review screen with an invoice preview, totals check, and editable details" class="block h-auto w-full" loading="eager"></div><div class="absolute -bottom-5 -left-4 hidden items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-lg sm:flex"><span class="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100 text-slate-700"><span class="material-symbols-outlined">fact_check</span></span><span><span class="block text-xs font-semibold text-slate-800">Invoice details</span><span class="mt-0.5 block text-[10px] text-slate-500">Fields and totals</span></span></div></div>
+      </div>
+    </section>
+
+    <section id="workflow" class="mx-auto max-w-7xl scroll-mt-24 px-5 py-20 sm:px-8 sm:py-28">
+      <div class="reveal mx-auto max-w-2xl text-center"><p class="text-xs font-bold uppercase tracking-[.18em] text-slate-500">A clearer workflow</p><h2 class="display mt-4 text-3xl font-semibold tracking-[-.035em] text-slate-950 sm:text-4xl">From document to decision, without the busywork.</h2><p class="mt-4 text-sm leading-6 text-slate-600 sm:text-base">One focused place to bring invoices in, review the details, and act on the result.</p></div>
+      <div class="mt-12 grid gap-4 md:grid-cols-3">
+        <article class="reveal rounded-2xl border border-slate-200 bg-white p-6 sm:p-7"><span class="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-100 text-slate-700"><span class="material-symbols-outlined">upload_file</span></span><p class="mt-6 text-xs font-bold uppercase tracking-[.14em] text-slate-400">01 · Intake</p><h3 class="display mt-2 text-lg font-semibold">Bring documents together</h3><p class="mt-2 text-sm leading-6 text-slate-600">Upload purchase orders and invoices, or send them through your configured email intake.</p></article>
+        <article class="reveal delay-1 rounded-2xl border border-slate-200 bg-white p-6 sm:p-7"><span class="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-100 text-slate-700"><span class="material-symbols-outlined">manage_search</span></span><p class="mt-6 text-xs font-bold uppercase tracking-[.14em] text-slate-400">02 · Review</p><h3 class="display mt-2 text-lg font-semibold">See the details clearly</h3><p class="mt-2 text-sm leading-6 text-slate-600">Review extracted fields beside the original document, with arithmetic checks to help surface discrepancies.</p></article>
+        <article class="reveal delay-2 rounded-2xl border border-slate-200 bg-white p-6 sm:p-7"><span class="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-100 text-slate-700"><span class="material-symbols-outlined">outbox</span></span><p class="mt-6 text-xs font-bold uppercase tracking-[.14em] text-slate-400">03 · Deliver</p><h3 class="display mt-2 text-lg font-semibold">Keep your process moving</h3><p class="mt-2 text-sm leading-6 text-slate-600">Export reviewed data or deliver verified documents to your system through webhooks.</p></article>
+      </div>
+    </section>
+
+    <section id="capabilities" class="scroll-mt-24 border-y border-slate-200 bg-[#f7f8fa]">
+      <div class="mx-auto grid max-w-7xl gap-12 px-5 py-16 sm:px-8 sm:py-20 lg:grid-cols-2 lg:items-center">
+        <div class="reveal"><p class="text-xs font-bold uppercase tracking-[.18em] text-slate-500">Built for careful work</p><h2 class="display mt-4 max-w-xl text-3xl font-semibold tracking-[-.035em] sm:text-4xl">Useful clarity for the details that matter.</h2><p class="mt-4 max-w-lg text-sm leading-6 text-slate-600 sm:text-base">Spend less time searching through PDFs and more time resolving the exceptions that need your attention.</p></div>
+        <div class="reveal delay-1 grid gap-x-8 gap-y-6 sm:grid-cols-2">
+          <div class="flex gap-3"><span class="material-symbols-outlined text-slate-600">rule</span><div><h3 class="text-sm font-semibold">Arithmetic checks</h3><p class="mt-1 text-sm leading-5 text-slate-500">Compare line items, subtotals, and totals.</p></div></div>
+          <div class="flex gap-3"><span class="material-symbols-outlined text-slate-600">visibility</span><div><h3 class="text-sm font-semibold">Side-by-side review</h3><p class="mt-1 text-sm leading-5 text-slate-500">Inspect original pages alongside extracted data.</p></div></div>
+          <div class="flex gap-3"><span class="material-symbols-outlined text-slate-600">file_download</span><div><h3 class="text-sm font-semibold">Practical exports</h3><p class="mt-1 text-sm leading-5 text-slate-500">Take structured invoice data with you.</p></div></div>
+          <div class="flex gap-3"><span class="material-symbols-outlined text-slate-600">webhook</span><div><h3 class="text-sm font-semibold">Connected workflows</h3><p class="mt-1 text-sm leading-5 text-slate-500">Send verified records to configured systems.</p></div></div>
+        </div>
+      </div>
+    </section>
+    <section class="mx-auto max-w-7xl px-5 py-20 text-center sm:px-8 sm:py-24"><div class="reveal"><h2 class="display text-3xl font-semibold tracking-[-.035em] sm:text-4xl">Make invoice review feel manageable.</h2><p class="mx-auto mt-4 max-w-xl text-sm leading-6 text-slate-600 sm:text-base">Set up your workspace and bring your document process into focus.</p><a href="/register" class="mt-7 inline-flex items-center gap-2 rounded-lg bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:-translate-y-0.5 hover:bg-slate-700">Get started<span class="material-symbols-outlined" style="font-size:18px">arrow_forward</span></a><p class="mt-4 text-xs text-slate-500">Already have an account? <a href="/login" class="font-semibold text-slate-800 underline underline-offset-4">Sign in</a></p></div></section>
+  </main>
+
+  <footer class="border-t border-slate-200 bg-white"><div class="mx-auto flex max-w-7xl flex-col gap-6 px-5 py-8 sm:px-8 md:flex-row md:items-center md:justify-between"><div><a href="#top" class="flex w-fit items-center gap-2"><span class="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-900 text-white"><span class="material-symbols-outlined" style="font-size:17px">bolt</span></span><span class="display font-extrabold tracking-tight">Doc<span class="text-slate-500">Flow</span></span></a><p class="mt-2 text-xs text-slate-500">Clearer invoice operations.</p></div><nav aria-label="Footer" class="flex flex-wrap gap-x-6 gap-y-2 text-xs font-medium text-slate-500"><a href="#workflow" class="hover:text-slate-900">How it works</a><a href="#capabilities" class="hover:text-slate-900">Capabilities</a><a href="/login" class="hover:text-slate-900">Sign in</a><a href="/register" class="hover:text-slate-900">Create account</a><a href="mailto:support@docflow.example" class="hover:text-slate-900">Support</a><a href="#" class="hover:text-slate-900">Privacy</a><a href="#" class="hover:text-slate-900">Terms</a></nav><span class="text-xs text-slate-400">© 2026 DocFlow</span></div></footer>
+  <script>
+    if ('IntersectionObserver' in window && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      const observer = new IntersectionObserver(entries => entries.forEach(entry => { if (entry.isIntersecting) { entry.target.classList.add('visible'); observer.unobserve(entry.target); } }), { threshold: 0.12 });
+      document.querySelectorAll('.reveal').forEach(element => observer.observe(element));
+    } else { document.querySelectorAll('.reveal').forEach(element => element.classList.add('visible')); }
+  </script>
+</body>
+</html>

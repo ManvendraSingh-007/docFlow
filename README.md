@@ -39,6 +39,14 @@ source venv/bin/activate
 PYTHONPATH=. pytest tests
 ```
 
+### 4. Check a PDF folder with the local extractor
+```bash
+source venv/bin/activate
+python scripts/check_extraction.py sample_data
+```
+
+The command scans the folder recursively, prints one result per PDF, and summarizes verified, review-required, failed, and error counts. It uses the local heuristic parser and does not call Gemini or OpenAI. `PASS` reflects DocFlow's built-in checks; this is not a field-accuracy score without known expected values. To scan another folder or one PDF, pass its path instead of `sample_data`.
+
 ---
 
 ## Project Structure

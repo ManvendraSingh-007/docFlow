@@ -56,7 +56,11 @@ app.include_router(auth_router)
 async def dashboard_view(request: Request):
     user = user_for_page(request)
     if not user:
-        return RedirectResponse("/login", status_code=303)
+        return templates.TemplateResponse(
+            request,
+            "landing.html",
+            {"app_name": settings.app_name, "csrf_token": csrf_token_for(request)},
+        )
     docs = DocumentRepository.list_all(limit=50, user_id=user["id"])
     stats = DocumentRepository.get_stats(user_id=user["id"])
     return templates.TemplateResponse(

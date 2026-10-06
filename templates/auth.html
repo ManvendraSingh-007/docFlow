@@ -1,55 +1,31 @@
 <!DOCTYPE html>
-<html lang="en" class="h-full bg-slate-50">
+<html lang="en" class="min-h-full bg-slate-50">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{{ 'Create account' if mode == 'register' else 'Sign in' }} | DocFlow</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <script src="https://cdn.tailwindcss.com"></script>
-  <style>body{font-family:Inter,sans-serif}</style>
+  <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script><style>body{font-family:Inter,sans-serif}.material-symbols-outlined{font-family:'Material Symbols Outlined';font-size:20px;vertical-align:middle}</style>
 </head>
-<body class="min-h-full bg-slate-50 text-slate-900 antialiased">
-  <main class="mx-auto flex min-h-screen max-w-md flex-col justify-center px-5 py-12">
-    <a href="/login" class="mb-8 text-center text-2xl font-semibold tracking-tight">DocFlow</a>
-    <div class="rounded-lg border border-slate-200 bg-white p-7 shadow-sm sm:p-8">
-      <h1 class="text-xl font-semibold">{{ 'Create your account' if mode == 'register' else 'Welcome back' }}</h1>
-      <p class="mt-1 text-sm text-slate-500">{{ 'Set up your workspace to manage incoming invoices.' if mode == 'register' else 'Sign in to continue to your invoices.' }}</p>
-
-      {% if error %}
-        <p role="alert" class="mt-5 rounded-md border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-700">{{ error }}</p>
-      {% endif %}
-
-      <form method="post" action="/{{ mode }}" class="mt-6 space-y-4">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        {% if mode == 'register' %}
-          <div>
-            <label for="full_name" class="mb-1 block text-sm font-medium">Full name</label>
-            <input id="full_name" name="full_name" required maxlength="120" autocomplete="name" class="w-full rounded-md border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-slate-700 focus:ring-2 focus:ring-slate-200">
-          </div>
-          <div>
-            <label for="company_name" class="mb-1 block text-sm font-medium">Company <span class="font-normal text-slate-400">(optional)</span></label>
-            <input id="company_name" name="company_name" maxlength="160" autocomplete="organization" class="w-full rounded-md border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-slate-700 focus:ring-2 focus:ring-slate-200">
-          </div>
-        {% endif %}
-        <div>
-          <label for="email" class="mb-1 block text-sm font-medium">Work email</label>
-          <input id="email" name="email" type="email" required maxlength="254" autocomplete="email" class="w-full rounded-md border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-slate-700 focus:ring-2 focus:ring-slate-200">
-        </div>
-        <div>
-          <label for="password" class="mb-1 block text-sm font-medium">Password</label>
-          <input id="password" name="password" type="password" required minlength="{{ 12 if mode == 'register' else 1 }}" maxlength="256" autocomplete="{{ 'new-password' if mode == 'register' else 'current-password' }}" class="w-full rounded-md border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-slate-700 focus:ring-2 focus:ring-slate-200">
-          {% if mode == 'register' %}<p class="mt-1 text-xs text-slate-500">Use at least 12 characters.</p>{% endif %}
-        </div>
-        <button type="submit" class="w-full rounded-md bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800">{{ 'Create account' if mode == 'register' else 'Sign in' }}</button>
-      </form>
-
-      <p class="mt-6 text-center text-sm text-slate-500">
-        {% if mode == 'register' %}Already have an account? <a href="/login" class="font-medium text-slate-900 underline underline-offset-4">Sign in</a>
-        {% else %}New to DocFlow? <a href="/register" class="font-medium text-slate-900 underline underline-offset-4">Create an account</a>{% endif %}
-      </p>
-    </div>
+<body class="min-h-screen text-slate-900 antialiased">
+  <header class="absolute inset-x-0 top-0 z-10"><div class="mx-auto flex max-w-7xl items-center justify-between px-5 py-6 sm:px-8"><a href="/login" class="flex items-center gap-2.5"><span class="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-900 text-white"><span class="material-symbols-outlined">bolt</span></span><span class="text-lg font-semibold tracking-tight">Doc<span class="text-slate-500">Flow</span></span></a><span class="text-xs font-medium text-slate-500">Secure document workspace</span></div></header>
+  <main class="mx-auto flex min-h-screen max-w-7xl items-center justify-center px-5 pb-16 pt-24 lg:px-8">
+    <section class="mx-auto w-full max-w-md">
+      <div class="mb-7 lg:hidden"><p class="text-xs font-semibold uppercase tracking-[.16em] text-slate-500">DocFlow workspace</p></div>
+      <div class="rounded-2xl border border-slate-200 bg-white p-7 shadow-[0_20px_60px_-35px_rgba(15,23,42,.35)] sm:p-9">
+        <div class="mb-7"><p class="text-xs font-semibold uppercase tracking-[.14em] text-slate-500">{{ 'Get started' if mode == 'register' else 'Welcome back' }}</p><h2 class="mt-2 text-2xl font-semibold tracking-tight">{{ 'Create your account' if mode == 'register' else 'Sign in to DocFlow' }}</h2><p class="mt-2 text-sm leading-6 text-slate-500">{{ 'Set up your workspace to manage incoming invoices.' if mode == 'register' else 'Continue to your document workspace.' }}</p></div>
+        {% if error %}<p role="alert" class="mb-5 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2.5 text-sm text-rose-700">{{ error }}</p>{% endif %}
+        <form method="post" action="/{{ mode }}" class="space-y-4"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          {% if mode == 'register' %}<div><label for="full_name" class="mb-1.5 block text-sm font-medium text-slate-700">Full name</label><input id="full_name" name="full_name" required maxlength="120" autocomplete="name" class="w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm outline-none transition focus:border-slate-500 focus:ring-4 focus:ring-slate-100"></div>
+          <div><label for="company_name" class="mb-1.5 block text-sm font-medium text-slate-700">Company <span class="font-normal text-slate-400">(optional)</span></label><input id="company_name" name="company_name" maxlength="160" autocomplete="organization" class="w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm outline-none transition focus:border-slate-500 focus:ring-4 focus:ring-slate-100"></div>{% endif %}
+          <div><label for="email" class="mb-1.5 block text-sm font-medium text-slate-700">Work email</label><input id="email" name="email" type="email" required maxlength="254" autocomplete="email" class="w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm outline-none transition focus:border-slate-500 focus:ring-4 focus:ring-slate-100"></div>
+          <div><label for="password" class="mb-1.5 block text-sm font-medium text-slate-700">Password</label><input id="password" name="password" type="password" required minlength="{{ 12 if mode == 'register' else 1 }}" maxlength="256" autocomplete="{{ 'new-password' if mode == 'register' else 'current-password' }}" class="w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm outline-none transition focus:border-slate-500 focus:ring-4 focus:ring-slate-100">{% if mode == 'register' %}<p class="mt-1.5 text-xs text-slate-500">Use at least 12 characters.</p>{% endif %}</div>
+          <button type="submit" class="mt-2 w-full rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-700 focus:outline-none focus:ring-4 focus:ring-slate-200">{{ 'Create account' if mode == 'register' else 'Sign in' }}</button>
+        </form>
+        <p class="mt-6 text-center text-sm text-slate-500">{% if mode == 'register' %}Already have an account? <a href="/login" class="font-semibold text-slate-900 hover:underline">Sign in</a>{% else %}New to DocFlow? <a href="/register" class="font-semibold text-slate-900 hover:underline">Create an account</a>{% endif %}</p>
+      </div>
+      <p class="mt-6 text-center text-xs text-slate-400">© 2026 DocFlow · <a href="#" class="hover:text-slate-600">Privacy</a> · <a href="#" class="hover:text-slate-600">Terms</a></p>
+    </section>
   </main>
 </body>
 </html>

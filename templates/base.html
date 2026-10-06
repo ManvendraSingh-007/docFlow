@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" class="h-full bg-slate-100">
+<html lang="en" class="min-h-full bg-slate-100">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -75,9 +75,12 @@
       border-radius: 1rem;
       box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
     }
+    .form-control { border: 1px solid #cbd5e1; border-radius: .5rem; background: #fff; transition: border-color .15s, box-shadow .15s; }
+    .form-control:focus { border-color: #64748b; outline: 0; box-shadow: 0 0 0 3px rgba(100,116,139,.15); }
+    details[open] .profile-chevron { transform: rotate(180deg); }
   </style>
 </head>
-<body class="h-full flex flex-col antialiased selection:bg-slate-900 selection:text-white">
+<body class="min-h-screen flex flex-col antialiased selection:bg-slate-900 selection:text-white">
 
   <header class="sticky top-0 z-40 border-b border-slate-200 bg-white/90 backdrop-blur-sm">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -91,18 +94,25 @@
           </a>
         </div>
 
-        <nav class="flex items-center space-x-2 text-sm font-medium">
-          <a href="/" class="rounded-md px-3 py-2 text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900">
-            Dashboard
-          </a>
-          <a href="/settings" class="rounded-md px-3 py-2 text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900">
-            Settings
-          </a>
-          <span class="hidden sm:block border-l border-slate-200 pl-3 text-xs text-slate-600">{{ current_user.full_name }}</span>
-          <form method="post" action="/logout">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <button type="submit" class="rounded-md px-3 py-2 text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900">Sign out</button>
-          </form>
+        <nav class="flex items-center text-sm font-medium">
+          <details class="relative">
+            <summary class="flex cursor-pointer list-none items-center gap-2 rounded-full p-1.5 pr-2.5 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-slate-300" aria-label="Open account menu">
+              <span class="flex h-8 w-8 items-center justify-center rounded-full bg-slate-900 text-xs font-semibold text-white">{{ current_user.full_name[:1]|upper if current_user and current_user.full_name else 'A' }}</span>
+              <span class="hidden max-w-32 truncate text-sm text-slate-700 sm:block">{{ current_user.full_name if current_user else 'Account' }}</span>
+              <span class="profile-chevron material-symbols-outlined text-slate-500 transition-transform">expand_more</span>
+            </summary>
+            <div class="absolute right-0 z-50 mt-2 w-60 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-xl">
+              <div class="border-b border-slate-100 px-4 py-3">
+                <p class="truncate text-sm font-semibold text-slate-900">{{ current_user.full_name if current_user else 'Account' }}</p>
+                <p class="truncate text-xs text-slate-500">{{ current_user.email if current_user else '' }}</p>
+              </div>
+              <a href="/settings" class="flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50"><span class="material-symbols-outlined text-slate-500">settings</span>Account settings</a>
+              <form method="post" action="/logout" class="border-t border-slate-100">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button type="submit" class="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50"><span class="material-symbols-outlined text-slate-500">logout</span>Sign out</button>
+              </form>
+            </div>
+          </details>
         </nav>
       </div>
     </div>
@@ -111,6 +121,15 @@
   <main class="flex-1 pb-12">
     {% block content %}{% endblock %}
   </main>
+
+  <footer class="mt-auto border-t border-slate-200 bg-white">
+    <div class="mx-auto flex max-w-7xl flex-col gap-5 px-4 py-6 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
+      <div class="flex items-center gap-2 text-sm text-slate-500"><span class="flex h-7 w-7 items-center justify-center rounded-md bg-slate-900 text-white"><span class="material-symbols-outlined" style="font-size:16px">bolt</span></span><span>© 2026 DocFlow</span></div>
+      <nav aria-label="Footer" class="flex flex-wrap gap-x-6 gap-y-2 text-xs font-medium text-slate-500">
+        <a href="/" class="hover:text-slate-900">Overview</a><a href="/settings" class="hover:text-slate-900">Settings</a><a href="mailto:support@docflow.example" class="hover:text-slate-900">Support</a><a href="#" class="hover:text-slate-900">Privacy</a><a href="#" class="hover:text-slate-900">Terms</a>
+      </nav>
+    </div>
+  </footer>
 
   {% block scripts %}{% endblock %}
 </body>

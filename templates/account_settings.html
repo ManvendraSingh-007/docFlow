@@ -3,12 +3,24 @@
 {% block title %}Settings | DocFlow{% endblock %}
 
 {% block content %}
-<div class="mx-auto max-w-4xl px-4 pt-8 sm:px-6 lg:px-8">
-  <header class="mb-8"><h1 class="text-2xl font-bold text-slate-900">Settings</h1></header>
+<div class="mx-auto max-w-7xl px-4 pt-8 sm:px-6 lg:px-8">
+  <header class="mb-8 border-b border-slate-200 pb-6"><p class="text-xs font-semibold uppercase tracking-[.16em] text-slate-500">Workspace</p><h1 class="mt-2 text-3xl font-semibold tracking-tight text-slate-900">Settings</h1><p class="mt-2 max-w-2xl text-sm text-slate-500">Manage your account, document processing, and connected services.</p></header>
   <div id="settingsMessage" class="mb-5 hidden rounded-md border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700" role="status"></div>
 
-  <section class="border-b border-slate-200 pb-8">
-    <h2 class="text-base font-semibold text-slate-900">Account</h2>
+  <div class="grid gap-8 lg:grid-cols-[220px_minmax(0,1fr)]">
+  <aside class="lg:sticky lg:top-24 lg:self-start">
+    <p class="mb-3 px-3 text-[11px] font-semibold uppercase tracking-[.14em] text-slate-400">Manage</p>
+    <nav class="flex gap-1 overflow-x-auto lg:flex-col" aria-label="Settings sections">
+      <a href="#account" class="whitespace-nowrap rounded-lg px-3 py-2.5 text-sm font-medium text-slate-700 hover:bg-white hover:shadow-sm"><span class="material-symbols-outlined mr-2 text-slate-400">person</span>Account</a>
+      <a href="#security" class="whitespace-nowrap rounded-lg px-3 py-2.5 text-sm font-medium text-slate-700 hover:bg-white hover:shadow-sm"><span class="material-symbols-outlined mr-2 text-slate-400">lock</span>Security</a>
+      <a href="#extraction" class="whitespace-nowrap rounded-lg px-3 py-2.5 text-sm font-medium text-slate-700 hover:bg-white hover:shadow-sm"><span class="material-symbols-outlined mr-2 text-slate-400">document_scanner</span>Extraction</a>
+      <a href="#integrations" class="whitespace-nowrap rounded-lg px-3 py-2.5 text-sm font-medium text-slate-700 hover:bg-white hover:shadow-sm"><span class="material-symbols-outlined mr-2 text-slate-400">hub</span>Integrations</a>
+    </nav>
+  </aside>
+  <div class="space-y-5 pb-10">
+
+  <section id="account" class="card-shell scroll-mt-24 p-6 sm:p-7">
+    <div class="mb-5 flex items-start gap-3"><span class="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-600"><span class="material-symbols-outlined">person</span></span><div><h2 class="text-base font-semibold text-slate-900">Account profile</h2><p class="mt-1 text-sm text-slate-500">Your personal and organization details.</p></div></div>
     <div class="mt-5 grid gap-4 sm:grid-cols-2">
       <label class="text-sm font-medium text-slate-700">Full name<input id="profileName" class="mt-1.5 w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-normal text-slate-900"></label>
       <label class="text-sm font-medium text-slate-700">Email<input id="profileEmail" type="email" class="mt-1.5 w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-normal text-slate-900"></label>
@@ -17,8 +29,8 @@
     <button onclick="saveProfile()" class="mt-4 rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800">Save account</button>
   </section>
 
-  <section class="border-b border-slate-200 py-8">
-    <h2 class="text-base font-semibold text-slate-900">Password</h2>
+  <section id="security" class="card-shell scroll-mt-24 p-6 sm:p-7">
+    <div class="mb-5 flex items-start gap-3"><span class="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-600"><span class="material-symbols-outlined">shield_lock</span></span><div><h2 class="text-base font-semibold text-slate-900">Security</h2><p class="mt-1 text-sm text-slate-500">Keep your account access protected.</p></div></div>
     <div class="mt-5 grid gap-4 sm:grid-cols-2">
       <label class="text-sm font-medium text-slate-700">Current password<input id="currentPassword" type="password" autocomplete="current-password" class="mt-1.5 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"></label>
       <label class="text-sm font-medium text-slate-700">New password<input id="newPassword" type="password" minlength="12" autocomplete="new-password" class="mt-1.5 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"></label>
@@ -26,8 +38,8 @@
     <button onclick="savePassword()" class="mt-4 rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Update password</button>
   </section>
 
-  <section class="border-b border-slate-200 py-8">
-    <h2 class="text-base font-semibold text-slate-900">Invoice extraction</h2>
+  <section id="extraction" class="card-shell scroll-mt-24 p-6 sm:p-7">
+    <div class="mb-5 flex items-start gap-3"><span class="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-600"><span class="material-symbols-outlined">document_scanner</span></span><div><h2 class="text-base font-semibold text-slate-900">Invoice extraction</h2><p class="mt-1 text-sm text-slate-500">Choose how DocFlow reads incoming documents.</p></div></div>
     <div class="mt-5 space-y-4">
       <label class="block text-sm font-medium text-slate-700">Provider
         <select id="defaultProvider" class="mt-1.5 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-900">
@@ -46,17 +58,18 @@
     </div>
   </section>
 
-  <section class="border-b border-slate-200 py-8">
+  <section id="integrations" class="card-shell scroll-mt-24 p-6 sm:p-7">
+    <div class="mb-6 flex items-start gap-3"><span class="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-600"><span class="material-symbols-outlined">hub</span></span><div><h2 class="text-base font-semibold text-slate-900">Connected services</h2><p class="mt-1 text-sm text-slate-500">Manage automated intake and outbound delivery.</p></div></div>
+    <div class="rounded-xl border border-slate-200 p-5">
     <div class="flex flex-wrap items-start justify-between gap-3">
-      <div><h2 class="text-base font-semibold text-slate-900">Email intake</h2><p id="inboundTokenStatus" class="mt-1 text-sm text-slate-500"></p></div>
+      <div><h3 class="text-sm font-semibold text-slate-800">Email intake</h3><p id="inboundTokenStatus" class="mt-1 text-sm text-slate-500"></p></div>
       <button onclick="rotateInboundToken()" class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Generate new token</button>
     </div>
     <input id="inboundToken" readonly class="mt-4 hidden w-full rounded-md border border-slate-300 bg-slate-50 px-3 py-2 font-mono text-sm">
     <p class="mt-2 text-xs text-slate-500">Use this token in the <code>X-DocFlow-Inbound-Token</code> header for inbound email requests.</p>
-  </section>
-
-  <section class="py-8">
-    <h2 class="text-base font-semibold text-slate-900">Webhook delivery</h2>
+    </div>
+    <div class="mt-4 rounded-xl border border-slate-200 p-5">
+    <h3 class="text-sm font-semibold text-slate-800">Webhook delivery</h3>
     <div class="mt-5 space-y-4">
       <label class="block text-sm font-medium text-slate-700">Destination URL<input id="webhookUrl" type="url" placeholder="https://" class="mt-1.5 w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-normal"></label>
       <label class="block text-sm font-medium text-slate-700">Signing secret<input id="webhookSecret" type="password" autocomplete="new-password" placeholder="Leave blank to keep saved secret" class="mt-1.5 w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-normal"></label>
@@ -66,7 +79,9 @@
         <button onclick="testWebhook()" class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Send test</button>
       </div>
     </div>
+    </div>
   </section>
+  </div></div>
 </div>
 {% endblock %}
 
