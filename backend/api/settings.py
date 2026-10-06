@@ -18,6 +18,9 @@ class SettingsUpdatePayload(BaseModel):
     mistral_api_key: Optional[str] = None
     openrouter_api_key: Optional[str] = None
     openrouter_model: Optional[str] = None
+    gemini_model: Optional[str] = None
+    openai_model: Optional[str] = None
+    mistral_model: Optional[str] = None
     auto_dispatch_on_verified: Optional[bool] = None
 
 @router.get("")
@@ -33,6 +36,9 @@ def get_current_settings(user: dict = Depends(current_user)):
         "mistral_api_key_configured": bool(account.get("mistral_api_key")),
         "openrouter_api_key_configured": bool(account.get("openrouter_api_key")),
         "openrouter_model": account.get("openrouter_model", "google/gemini-2.5-flash"),
+        "gemini_model": account.get("gemini_model", "gemini-3.1-flash-lite"),
+        "openai_model": account.get("openai_model", "gpt-4o-mini"),
+        "mistral_model": account.get("mistral_model", "mistral-small-2506"),
         "inbound_token_configured": bool(account.get("inbound_token")),
         "full_name": user["full_name"],
         "email": user["email"],
@@ -46,6 +52,9 @@ def update_settings(payload: SettingsUpdatePayload, user: dict = Depends(current
         raise HTTPException(status_code=422, detail="Choose a supported extraction provider")
     if values.get("openrouter_model") is not None and (not values["openrouter_model"].strip() or len(values["openrouter_model"]) > 160):
         raise HTTPException(status_code=422, detail="Enter a valid OpenRouter model ID")
+    for model_field in ("gemini_model", "openai_model", "mistral_model"):
+        if values.get(model_field) is not None and (not values[model_field].strip() or len(values[model_field]) > 160):
+            raise HTTPException(status_code=422, detail="Model IDs must contain between 1 and 160 characters")
     webhook_url = values.get("webhook_url")
     if webhook_url and not re.fullmatch(r"https?://[^\s]+", webhook_url):
         raise HTTPException(status_code=422, detail="Webhook URL must use HTTP or HTTPS")

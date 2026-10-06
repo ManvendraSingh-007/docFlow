@@ -88,6 +88,9 @@ class DocumentExtractor:
         openai_api_key = account_settings.get("openai_api_key") or ("" if use_account_credentials else settings.openai_api_key)
         mistral_api_key = account_settings.get("mistral_api_key", "")
         openrouter_api_key = account_settings.get("openrouter_api_key", "")
+        gemini_model = account_settings.get("gemini_model") or "gemini-3.1-flash-lite"
+        openai_model = account_settings.get("openai_model") or "gpt-4o-mini"
+        mistral_model = account_settings.get("mistral_model") or "mistral-small-2506"
         provider = (account_settings.get("default_provider") or settings.default_provider).lower()
 
         # Decide provider
@@ -106,19 +109,19 @@ class DocumentExtractor:
         parsed_data = None
         if provider == "gemini" and gemini_api_key:
             try:
-                parsed_data = await cls._extract_with_gemini(file_path, mime_type, gemini_api_key)
+                parsed_data = await cls._extract_with_gemini(file_path, mime_type, gemini_api_key, gemini_model)
             except Exception as e:
                 print(f"[Extractor] Gemini extraction failed, falling back to layout parser: {e}")
                 parsed_data = await cls._extract_smart_layout(file_path)
         elif provider == "openai" and openai_api_key:
             try:
-                parsed_data = await cls._extract_with_openai(file_path, mime_type, openai_api_key)
+                parsed_data = await cls._extract_with_openai(file_path, mime_type, openai_api_key, openai_model)
             except Exception as e:
                 print(f"[Extractor] OpenAI extraction failed, falling back to layout parser: {e}")
                 parsed_data = await cls._extract_smart_layout(file_path)
         elif provider == "mistral" and mistral_api_key:
             try:
-                parsed_data = await cls._extract_with_compatible_vision(file_path, mime_type, mistral_api_key, "https://api.mistral.ai/v1/chat/completions", "mistral-small-2506")
+                parsed_data = await cls._extract_with_compatible_vision(file_path, mime_type, mistral_api_key, "https://api.mistral.ai/v1/chat/completions", mistral_model)
             except Exception as e:
                 print(f"[Extractor] Mistral extraction failed, falling back to layout parser: {e}")
                 parsed_data = await cls._extract_smart_layout(file_path)
@@ -137,7 +140,7 @@ class DocumentExtractor:
         return parsed_data
 
     @classmethod
-    async def _extract_with_gemini(cls, file_path: Path, mime_type: str, api_key: Optional[str] = None) -> ParsedDocumentData:
+    async def _extract_with_gemini(cls, file_path: Path, mime_type: str, api_key: Optional[str] = None, model_name: str = "gemini-3.1-flash-lite") -> ParsedDocumentData:
         import base64
         api_key = api_key or settings.gemini_api_key
         with open(file_path, "rb") as f:
@@ -149,7 +152,7 @@ class DocumentExtractor:
             f"Extract all information accurately from the document and return only valid JSON."
         )
 
-        models_to_try = ["gemini-3.1-flash-lite"]
+        models_to_try = [model_name]
         last_error = None
 
         for model_name in models_to_try:
@@ -188,8 +191,8 @@ class DocumentExtractor:
         raise last_error or Exception("Gemini extraction failed on all model endpoints")
 
     @classmethod
-    async def _extract_with_openai(cls, file_path: Path, mime_type: str, api_key: Optional[str] = None) -> ParsedDocumentData:
-        return await cls._extract_with_compatible_vision(file_path, mime_type, api_key or settings.openai_api_key, "https://api.openai.com/v1/chat/completions", "gpt-4o-mini")
+    async def _extract_with_openai(cls, file_path: Path, mime_type: str, api_key: Optional[str] = None, model: str = "gpt-4o-mini") -> ParsedDocumentData:
+        return await cls._extract_with_compatible_vision(file_path, mime_type, api_key or settings.openai_api_key, "https://api.openai.com/v1/chat/completions", model)
 
     @classmethod
     async def _extract_with_compatible_vision(cls, file_path: Path, mime_type: str, api_key: str, endpoint: str, model: str) -> ParsedDocumentData:

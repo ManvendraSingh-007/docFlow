@@ -1,25 +1,25 @@
 {% extends "base.html" %}
 
-{% block title %}Settings | DocFlow{% endblock %}
+{% block title %}{{ settings_section|title }} | Settings | DocFlow{% endblock %}
 
 {% block content %}
 <div class="mx-auto max-w-7xl px-4 pt-8 sm:px-6 lg:px-8">
-  <header class="mb-8 border-b border-slate-200 pb-6"><p class="text-xs font-semibold uppercase tracking-[.16em] text-slate-500">Workspace</p><h1 class="mt-2 text-3xl font-semibold tracking-tight text-slate-900">Settings</h1><p class="mt-2 max-w-2xl text-sm text-slate-500">Manage your account, document processing, and connected services.</p></header>
-  <div id="settingsMessage" class="mb-5 hidden rounded-md border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700" role="status"></div>
+  <header class="mb-8 border-b border-slate-300 pb-6"><p class="text-xs font-semibold uppercase tracking-[.16em] text-slate-500">Workspace settings</p><h1 class="mt-2 text-3xl font-semibold tracking-tight text-slate-900">{{ settings_section|title }}</h1><p class="mt-2 max-w-2xl text-sm text-slate-600">{% if settings_section == 'account' %}Your profile and organization details.{% elif settings_section == 'security' %}Manage your password and account access.{% elif settings_section == 'extraction' %}Choose the provider and model used to read documents.{% else %}Configure automated intake and delivery.{% endif %}</p></header>
+  <div id="settingsMessage" class="mb-5 hidden rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm" role="status"></div>
 
   <div class="grid gap-8 lg:grid-cols-[220px_minmax(0,1fr)]">
-  <aside class="lg:sticky lg:top-24 lg:self-start">
-    <p class="mb-3 px-3 text-[11px] font-semibold uppercase tracking-[.14em] text-slate-400">Manage</p>
+  <aside class="lg:sticky lg:top-24 lg:self-start rounded-xl border border-slate-300 bg-white p-3 shadow-sm">
+    <p class="mb-3 px-3 pt-1 text-[11px] font-semibold uppercase tracking-[.14em] text-slate-500">Manage</p>
     <nav class="flex gap-1 overflow-x-auto lg:flex-col" aria-label="Settings sections">
-      <a href="#account" class="whitespace-nowrap rounded-lg px-3 py-2.5 text-sm font-medium text-slate-700 hover:bg-white hover:shadow-sm"><span class="material-symbols-outlined mr-2 text-slate-400">person</span>Account</a>
-      <a href="#security" class="whitespace-nowrap rounded-lg px-3 py-2.5 text-sm font-medium text-slate-700 hover:bg-white hover:shadow-sm"><span class="material-symbols-outlined mr-2 text-slate-400">lock</span>Security</a>
-      <a href="#extraction" class="whitespace-nowrap rounded-lg px-3 py-2.5 text-sm font-medium text-slate-700 hover:bg-white hover:shadow-sm"><span class="material-symbols-outlined mr-2 text-slate-400">document_scanner</span>Extraction</a>
-      <a href="#integrations" class="whitespace-nowrap rounded-lg px-3 py-2.5 text-sm font-medium text-slate-700 hover:bg-white hover:shadow-sm"><span class="material-symbols-outlined mr-2 text-slate-400">hub</span>Integrations</a>
+      <a href="/settings/account" class="whitespace-nowrap rounded-lg px-3 py-2.5 text-sm font-medium {% if settings_section == 'account' %}bg-slate-100 text-slate-900{% else %}text-slate-600 hover:bg-slate-50{% endif %}"><span class="material-symbols-outlined mr-2 text-slate-500">person</span>Account</a>
+      <a href="/settings/security" class="whitespace-nowrap rounded-lg px-3 py-2.5 text-sm font-medium {% if settings_section == 'security' %}bg-slate-100 text-slate-900{% else %}text-slate-600 hover:bg-slate-50{% endif %}"><span class="material-symbols-outlined mr-2 text-slate-500">lock</span>Security</a>
+      <a href="/settings/extraction" class="whitespace-nowrap rounded-lg px-3 py-2.5 text-sm font-medium {% if settings_section == 'extraction' %}bg-slate-100 text-slate-900{% else %}text-slate-600 hover:bg-slate-50{% endif %}"><span class="material-symbols-outlined mr-2 text-slate-500">document_scanner</span>Extraction</a>
+      <a href="/settings/integrations" class="whitespace-nowrap rounded-lg px-3 py-2.5 text-sm font-medium {% if settings_section == 'integrations' %}bg-slate-100 text-slate-900{% else %}text-slate-600 hover:bg-slate-50{% endif %}"><span class="material-symbols-outlined mr-2 text-slate-500">hub</span>Integrations</a>
     </nav>
   </aside>
   <div class="space-y-5 pb-10">
 
-  <section id="account" class="card-shell scroll-mt-24 p-6 sm:p-7">
+  {% if settings_section == 'account' %}<section id="account" class="card-shell border-slate-300 shadow-md scroll-mt-24 p-6 sm:p-7">
     <div class="mb-5 flex items-start gap-3"><span class="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-600"><span class="material-symbols-outlined">person</span></span><div><h2 class="text-base font-semibold text-slate-900">Account profile</h2><p class="mt-1 text-sm text-slate-500">Your personal and organization details.</p></div></div>
     <div class="mt-5 grid gap-4 sm:grid-cols-2">
       <label class="text-sm font-medium text-slate-700">Full name<input id="profileName" class="mt-1.5 w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-normal text-slate-900"></label>
@@ -27,18 +27,18 @@
       <label class="text-sm font-medium text-slate-700 sm:col-span-2">Company<input id="companyName" class="mt-1.5 w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-normal text-slate-900"></label>
     </div>
     <button onclick="saveProfile()" class="mt-4 rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800">Save account</button>
-  </section>
+  </section>{% endif %}
 
-  <section id="security" class="card-shell scroll-mt-24 p-6 sm:p-7">
+  {% if settings_section == 'security' %}<section id="security" class="card-shell border-slate-300 shadow-md scroll-mt-24 p-6 sm:p-7">
     <div class="mb-5 flex items-start gap-3"><span class="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-600"><span class="material-symbols-outlined">shield_lock</span></span><div><h2 class="text-base font-semibold text-slate-900">Security</h2><p class="mt-1 text-sm text-slate-500">Keep your account access protected.</p></div></div>
     <div class="mt-5 grid gap-4 sm:grid-cols-2">
       <label class="text-sm font-medium text-slate-700">Current password<input id="currentPassword" type="password" autocomplete="current-password" class="mt-1.5 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"></label>
       <label class="text-sm font-medium text-slate-700">New password<input id="newPassword" type="password" minlength="12" autocomplete="new-password" class="mt-1.5 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"></label>
     </div>
     <button onclick="savePassword()" class="mt-4 rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Update password</button>
-  </section>
+  </section>{% endif %}
 
-  <section id="extraction" class="card-shell scroll-mt-24 p-6 sm:p-7">
+  {% if settings_section == 'extraction' %}<section id="extraction" class="card-shell border-slate-300 shadow-md scroll-mt-24 p-6 sm:p-7">
     <div class="mb-5 flex items-start gap-3"><span class="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-600"><span class="material-symbols-outlined">document_scanner</span></span><div><h2 class="text-base font-semibold text-slate-900">Invoice extraction</h2><p class="mt-1 text-sm text-slate-500">Choose how DocFlow reads incoming documents.</p></div></div>
     <div class="mt-5 space-y-4">
       <label class="block text-sm font-medium text-slate-700">Provider
@@ -51,19 +51,17 @@
           <option value="heuristic">Local PDF parser</option>
         </select>
       </label>
-      <div class="grid gap-4 sm:grid-cols-2">
-        <label class="text-sm font-medium text-slate-700">Gemini API key<input id="geminiKey" type="password" autocomplete="off" placeholder="Leave blank to keep saved key" class="mt-1.5 w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-normal"></label>
-        <label class="text-sm font-medium text-slate-700">OpenAI API key<input id="openaiKey" type="password" autocomplete="off" placeholder="Leave blank to keep saved key" class="mt-1.5 w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-normal"></label>
-        <label class="text-sm font-medium text-slate-700">Mistral API key<input id="mistralKey" type="password" autocomplete="off" placeholder="Leave blank to keep saved key" class="mt-1.5 w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-normal"></label>
-        <label class="text-sm font-medium text-slate-700">OpenRouter API key<input id="openrouterKey" type="password" autocomplete="off" placeholder="Leave blank to keep saved key" class="mt-1.5 w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-normal"></label>
-      </div>
-      <label class="block text-sm font-medium text-slate-700">OpenRouter model ID<input id="openrouterModel" value="google/gemini-2.5-flash" placeholder="provider/model" class="mt-1.5 w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-normal"><span class="mt-1 block text-xs font-normal text-slate-500">Choose a vision capable model from OpenRouter’s model catalog.</span></label>
+      <div id="providerHint" class="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-600">Choose a provider to configure its API key and model. Automatic mode uses a saved provider key when available.</div>
+      <div data-provider-panel="gemini" class="provider-panel hidden rounded-xl border border-slate-300 bg-slate-50 p-4"><h3 class="text-sm font-semibold text-slate-900">Google Gemini</h3><div class="mt-4 grid gap-4 sm:grid-cols-2"><label class="text-sm font-medium text-slate-700">API key<input id="geminiKey" type="password" autocomplete="off" placeholder="Leave blank to keep saved key" class="mt-1.5 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal"></label><label class="text-sm font-medium text-slate-700">Model ID<input id="geminiModel" value="gemini-3.1-flash-lite" class="mt-1.5 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal"></label></div></div>
+      <div data-provider-panel="openai" class="provider-panel hidden rounded-xl border border-slate-300 bg-slate-50 p-4"><h3 class="text-sm font-semibold text-slate-900">OpenAI</h3><div class="mt-4 grid gap-4 sm:grid-cols-2"><label class="text-sm font-medium text-slate-700">API key<input id="openaiKey" type="password" autocomplete="off" placeholder="Leave blank to keep saved key" class="mt-1.5 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal"></label><label class="text-sm font-medium text-slate-700">Model ID<input id="openaiModel" value="gpt-4o-mini" class="mt-1.5 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal"></label></div></div>
+      <div data-provider-panel="mistral" class="provider-panel hidden rounded-xl border border-slate-300 bg-slate-50 p-4"><h3 class="text-sm font-semibold text-slate-900">Mistral</h3><div class="mt-4 grid gap-4 sm:grid-cols-2"><label class="text-sm font-medium text-slate-700">API key<input id="mistralKey" type="password" autocomplete="off" placeholder="Leave blank to keep saved key" class="mt-1.5 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal"></label><label class="text-sm font-medium text-slate-700">Vision model ID<input id="mistralModel" value="mistral-small-2506" class="mt-1.5 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal"></label></div></div>
+      <div data-provider-panel="openrouter" class="provider-panel hidden rounded-xl border border-slate-300 bg-slate-50 p-4"><h3 class="text-sm font-semibold text-slate-900">OpenRouter</h3><div class="mt-4 grid gap-4 sm:grid-cols-2"><label class="text-sm font-medium text-slate-700">API key<input id="openrouterKey" type="password" autocomplete="off" placeholder="Leave blank to keep saved key" class="mt-1.5 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal"></label><label class="text-sm font-medium text-slate-700">Vision model ID<input id="openrouterModel" value="google/gemini-2.5-flash" placeholder="provider/model" class="mt-1.5 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal"><span class="mt-1 block text-xs font-normal text-slate-500">Use a model ID from OpenRouter’s catalog.</span></label></div></div>
       <p id="providerStatus" class="text-xs text-slate-500"></p>
       <button onclick="saveSettings()" class="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800">Save extraction settings</button>
     </div>
-  </section>
+  </section>{% endif %}
 
-  <section id="integrations" class="card-shell scroll-mt-24 p-6 sm:p-7">
+  {% if settings_section == 'integrations' %}<section id="integrations" class="card-shell border-slate-300 shadow-md scroll-mt-24 p-6 sm:p-7">
     <div class="mb-6 flex items-start gap-3"><span class="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-600"><span class="material-symbols-outlined">hub</span></span><div><h2 class="text-base font-semibold text-slate-900">Connected services</h2><p class="mt-1 text-sm text-slate-500">Manage automated intake and outbound delivery.</p></div></div>
     <div class="rounded-xl border border-slate-200 p-5">
     <div class="flex flex-wrap items-start justify-between gap-3">
@@ -85,7 +83,7 @@
       </div>
     </div>
     </div>
-  </section>
+  </section>{% endif %}
   </div></div>
 </div>
 {% endblock %}
@@ -115,37 +113,38 @@ async function loadSettings() {
   try {
     const response = await fetch("/api/settings");
     const data = await response.json();
-    document.getElementById("profileName").value = data.full_name || "";
-    document.getElementById("profileEmail").value = data.email || "";
-    document.getElementById("companyName").value = data.company_name || "";
-    document.getElementById("webhookUrl").value = data.webhook_url || "";
-    document.getElementById("autoDispatch").checked = data.auto_dispatch_on_verified;
-    document.getElementById("defaultProvider").value = data.default_provider || "auto";
-    document.getElementById("openrouterModel").value = data.openrouter_model || "google/gemini-2.5-flash";
+    const setValue = (id, value) => { const el = document.getElementById(id); if (el) el.value = value || ""; };
+    setValue("profileName", data.full_name); setValue("profileEmail", data.email); setValue("companyName", data.company_name);
+    setValue("webhookUrl", data.webhook_url); setValue("defaultProvider", data.default_provider || "auto");
+    setValue("geminiModel", data.gemini_model || "gemini-3.1-flash-lite"); setValue("openaiModel", data.openai_model || "gpt-4o-mini");
+    setValue("mistralModel", data.mistral_model || "mistral-small-2506"); setValue("openrouterModel", data.openrouter_model || "google/gemini-2.5-flash");
+    updateProviderPanel();
+    const autoDispatch = document.getElementById("autoDispatch"); if (autoDispatch) autoDispatch.checked = data.auto_dispatch_on_verified;
     const providers = [];
     if (data.gemini_api_key_configured) providers.push("Gemini");
     if (data.openai_api_key_configured) providers.push("OpenAI");
     if (data.mistral_api_key_configured) providers.push("Mistral");
     if (data.openrouter_api_key_configured) providers.push("OpenRouter");
-    document.getElementById("providerStatus").textContent = providers.length ? `Connected: ${providers.join(", ")}` : "No AI provider key saved. The local parser will be used.";
-    document.getElementById("inboundTokenStatus").textContent = data.inbound_token_configured ? "A token is active." : "No token created.";
+    const providerStatus = document.getElementById("providerStatus");
+    if (providerStatus) providerStatus.textContent = providers.length ? `Connected: ${providers.join(", ")}` : "No AI provider key saved. The local parser will be used.";
+    const inboundStatus = document.getElementById("inboundTokenStatus");
+    if (inboundStatus) inboundStatus.textContent = data.inbound_token_configured ? "A token is active." : "No token created.";
   } catch (error) {
     showMessage(error.message);
   }
 }
 
 async function saveSettings() {
-  const payload = {
-    webhook_url: document.getElementById("webhookUrl").value,
-    default_provider: document.getElementById("defaultProvider").value,
-    openrouter_model: document.getElementById("openrouterModel").value.trim(),
-    auto_dispatch_on_verified: document.getElementById("autoDispatch").checked
-  };
-  const gemini = document.getElementById("geminiKey").value;
-  const openai = document.getElementById("openaiKey").value;
-  const mistral = document.getElementById("mistralKey").value;
-  const openrouter = document.getElementById("openrouterKey").value;
-  const secret = document.getElementById("webhookSecret").value;
+  const payload = {};
+  const readValue = id => document.getElementById(id)?.value;
+  const webhookUrl = readValue("webhookUrl"), provider = readValue("defaultProvider"), autoDispatch = document.getElementById("autoDispatch");
+  if (webhookUrl !== undefined) payload.webhook_url = webhookUrl;
+  if (provider) payload.default_provider = provider;
+  if (autoDispatch) payload.auto_dispatch_on_verified = autoDispatch.checked;
+  for (const [id, key] of [["geminiModel", "gemini_model"], ["openaiModel", "openai_model"], ["mistralModel", "mistral_model"], ["openrouterModel", "openrouter_model"]]) {
+    const value = readValue(id); if (value !== undefined) payload[key] = value.trim();
+  }
+  const gemini = readValue("geminiKey"), openai = readValue("openaiKey"), mistral = readValue("mistralKey"), openrouter = readValue("openrouterKey"), secret = readValue("webhookSecret");
   if (gemini) payload.gemini_api_key = gemini;
   if (openai) payload.openai_api_key = openai;
   if (mistral) payload.mistral_api_key = mistral;
@@ -153,11 +152,7 @@ async function saveSettings() {
   if (secret) payload.webhook_secret = secret;
   try {
     await requestJson("/api/settings", "POST", payload);
-    document.getElementById("geminiKey").value = "";
-    document.getElementById("openaiKey").value = "";
-    document.getElementById("mistralKey").value = "";
-    document.getElementById("openrouterKey").value = "";
-    document.getElementById("webhookSecret").value = "";
+    for (const id of ["geminiKey", "openaiKey", "mistralKey", "openrouterKey", "webhookSecret"]) { const el = document.getElementById(id); if (el) el.value = ""; }
     showMessage("Settings saved.");
     loadSettings();
   } catch (error) {
@@ -221,6 +216,16 @@ async function testWebhook() {
   }
 }
 
-document.addEventListener("DOMContentLoaded", loadSettings);
+function updateProviderPanel() {
+  const provider = document.getElementById("defaultProvider")?.value || "auto";
+  document.querySelectorAll("[data-provider-panel]").forEach(panel => panel.classList.toggle("hidden", panel.dataset.providerPanel !== provider));
+  const hint = document.getElementById("providerHint");
+  if (hint) hint.classList.toggle("hidden", ["gemini", "openai", "mistral", "openrouter"].includes(provider));
+}
+document.addEventListener("DOMContentLoaded", () => {
+  loadSettings();
+  document.getElementById("defaultProvider")?.addEventListener("change", updateProviderPanel);
+  updateProviderPanel();
+});
 </script>
 {% endblock %}

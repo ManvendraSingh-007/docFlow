@@ -99,9 +99,15 @@ async def document_detail_view(request: Request, doc_id: str):
 
 @app.get("/settings", response_class=HTMLResponse)
 async def settings_view(request: Request):
+    return RedirectResponse("/settings/account", status_code=303)
+
+@app.get("/settings/{section}", response_class=HTMLResponse)
+async def settings_section_view(request: Request, section: str):
     user = user_for_page(request)
     if not user:
         return RedirectResponse("/login", status_code=303)
+    if section not in {"account", "security", "extraction", "integrations"}:
+        return RedirectResponse("/settings/account", status_code=303)
     account_settings = AccountSettingsRepository.get(user["id"])
     return templates.TemplateResponse(
         request,
@@ -111,6 +117,7 @@ async def settings_view(request: Request):
             "settings": settings,
             "current_user": user,
             "account_settings": account_settings,
+            "settings_section": section,
             "csrf_token": csrf_token_for(request),
         }
     )
