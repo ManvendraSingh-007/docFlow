@@ -178,7 +178,7 @@
         </div>
       </div>
 
-      <div class="card-shell p-5">
+      <div id="documentEditor" class="card-shell p-5">
         <div class="mb-4 flex items-center justify-between border-b border-slate-100 pb-3">
           <h2 class="text-sm font-bold uppercase tracking-[0.12em] text-slate-700">Document metadata & parties</h2>
           <button onclick="saveAndRevalidate()" class="inline-flex items-center gap-1 rounded-lg bg-slate-900 px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm hover:bg-slate-700">
@@ -186,6 +186,7 @@
             Save & re-check
           </button>
         </div>
+        <p id="manualEditNotice" class="mb-5 hidden rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs leading-5 text-amber-900" role="status"><span class="font-semibold">You’re editing extracted data.</span> Save & re-check stores your changes and recalculates the arithmetic. Compare them with the source document; the checks don’t verify that your edits match it.</p>
 
         <div class="mb-6 grid grid-cols-1 gap-4 text-xs sm:grid-cols-3">
           <div>
@@ -312,6 +313,7 @@ const documentCurrency = "{{ doc.data.summary.currency if doc.data and doc.data.
 let parsedDoc = {{ doc.parsed_json|safe if doc.parsed_json else '{}' }};
 
 function recalcRow(el) {
+  markManualDataEdited();
   const row = el.closest(".item-row");
   const qty = parseFloat(row.querySelector(".qty-input").value) || 0;
   const price = parseFloat(row.querySelector(".price-input").value) || 0;
@@ -339,6 +341,7 @@ function recalcGrandTotal() {
 }
 
 function addLineItem() {
+  markManualDataEdited();
   const tbody = document.getElementById("lineItemsTableBody");
   const count = tbody.querySelectorAll(".item-row").length + 1;
   const tr = document.createElement("tr");
@@ -356,8 +359,13 @@ function addLineItem() {
 }
 
 function removeLineItem(btn) {
+  markManualDataEdited();
   btn.closest(".item-row").remove();
   recalcSubtotal();
+}
+
+function markManualDataEdited() {
+  document.getElementById("manualEditNotice")?.classList.remove("hidden");
 }
 
 async function saveAndRevalidate() {
@@ -474,5 +482,7 @@ function downloadJson() {
   a.download = `doc_${docId.substring(0,8)}.json`;
   a.click();
 }
+
+document.getElementById("documentEditor")?.addEventListener("input", markManualDataEdited);
 </script>
 {% endblock %}

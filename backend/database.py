@@ -599,6 +599,7 @@ class DocumentRepository:
                 COUNT(*) as total_documents,
                 SUM(CASE WHEN status = 'VERIFIED' THEN 1 ELSE 0 END) as verified_count,
                 SUM(CASE WHEN status = 'REVIEW_REQUIRED' THEN 1 ELSE 0 END) as review_count,
+                SUM(CASE WHEN status = 'PROCESSING' THEN 1 ELSE 0 END) as processing_count,
                 SUM(CASE WHEN webhook_status = 'DELIVERED' THEN 1 ELSE 0 END) as delivered_webhooks
             FROM documents WHERE user_id = ?
         """, (user_id,)).fetchone()
@@ -607,6 +608,7 @@ class DocumentRepository:
             "total_documents": row["total_documents"] or 0,
             "verified_count": row["verified_count"] or 0,
             "review_count": row["review_count"] or 0,
+            "processing_count": row["processing_count"] or 0,
             "delivered_webhooks": row["delivered_webhooks"] or 0
         }
 

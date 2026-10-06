@@ -115,6 +115,12 @@ def list_documents(status: Optional[str] = Query(None), limit: int = 100, user: 
     stats = DocumentRepository.get_stats(user_id=user["id"])
     return {"stats": stats, "documents": docs}
 
+
+@router.get("/processing-status")
+def get_processing_status(user: dict = Depends(current_user)):
+    stats = DocumentRepository.get_stats(user_id=user["id"])
+    return {"is_processing": stats["processing_count"] > 0}
+
 @router.get("/{doc_id}")
 def get_document(doc_id: str, user: dict = Depends(current_user)):
     doc = DocumentRepository.get_by_id(doc_id, user_id=user["id"])

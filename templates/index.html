@@ -188,10 +188,10 @@ async function deleteDoc(id) {
 async function refreshAfterProcessing() {
   if (!document.querySelector('[data-document-status="PROCESSING"]')) return;
   try {
-    const response = await fetch("/api/documents?limit=50");
+    const response = await fetch("/api/documents/processing-status");
     if (response.ok) {
       const data = await response.json();
-      if (!data.documents.some(doc => doc.status === "PROCESSING")) {
+      if (!data.is_processing) {
         window.location.reload();
         return;
       }
@@ -199,7 +199,7 @@ async function refreshAfterProcessing() {
   } catch (error) {
     // Retry while the processing state remains visible.
   }
-  window.setTimeout(refreshAfterProcessing, 2500);
+  window.setTimeout(refreshAfterProcessing, 5000);
 }
 
 document.addEventListener("DOMContentLoaded", refreshAfterProcessing);
