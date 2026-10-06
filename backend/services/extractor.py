@@ -482,13 +482,15 @@ class DocumentExtractor:
 
         due_date = None
         due_date_match = re.search(
-            r"(?:DUE\s+DATE|PAYMENT\s+DUE|DUE\s+BY)[:\s]*([0-9]{1,2}[./-][0-9]{1,2}[./-][0-9]{2,4}|[A-Za-z]+\s+\d{1,2},?\s+\d{4}|\d{4}[./-]\d{1,2}[./-]\d{1,2})",
+            r"(?:DUE[ \t]+DATE|PAYMENT[ \t]+DUE|DUE[ \t]+BY)[ \t:]*([0-9]{1,2}[./-][0-9]{1,2}[./-][0-9]{2,4}|[A-Za-z]+\s+\d{1,2},?\s+\d{4}|\d{4}[./-]\d{1,2}[./-]\d{1,2})",
             full_text, re.IGNORECASE,
         )
         if due_date_match:
             due_date = due_date_match.group(1).strip()
-        terms_match = re.search(r"(?:PAYMENT\s+)?TERMS?\s*[:#]?\s*([^\n]+)", full_text, re.IGNORECASE)
-        payment_terms = terms_match.group(1).strip() if terms_match else None
+        # Do not let a blank "Terms:" label consume the next document field.
+        terms_match = re.search(r"(?:PAYMENT[ \t]+)?TERMS?[ \t]*[:#]?[ \t]*([^\r\n]+)", full_text, re.IGNORECASE)
+        payment_terms = terms_match.group(1).strip().lstrip(":#").strip() if terms_match else None
+        payment_terms = payment_terms or None
 
         # 5. Vendor Details Extraction
         vendor_name = None
@@ -544,15 +546,50 @@ class DocumentExtractor:
         buyer_name = None
         buyer_address = None
 
-        buyer_m = re.search(r"(?:TO:|BILL TO:|SHIP TO:|Billed to:|To Ship To)\s*\n([^\n]+)(?:\n([^\n]+))?", full_text, re.IGNORECASE)
-        if buyer_m:
-            line1 = buyer_m.group(1).strip()
-            line2 = buyer_m.group(2).strip() if buyer_m.group(2) else None
-            if line2 and not any(kw in line2.lower() for kw in ["phone", "tel", "tax", "email"]):
-                buyer_name = line1
-                buyer_company = line2
-            else:
-                buyer_company = line1
+        buyer_header = re.search(r"(?im)^\s*(?:BILL(?:ED)?\s+TO|SHIP\s+TO|TO\s+SHIP\s+TO|TO)\s*:\s*(.*)$", full_text)
+        if buyer_header:
+            candidate_lines = []
+            same_line_value = re.sub(r"\b(?:BILL(?:ED)?\s+TO|SHIP\s+TO)\s*:", "", buyer_header.group(1), flags=re.IGNORECASE).strip()
+            if re.match(r"^(?:balance\s+due|item\b|subtotal\b|total\b|notes?\s*:|terms?\s*:)", same_line_value, re.IGNORECASE):
+                same_line_value = ""
+            if same_line_value:
+                candidate_lines.append(same_line_value)
+            lines_after_header = full_text[buyer_header.end():].splitlines()
+            ignored_contact_fields = ("ship mode", "phone", "tel", "fax", "email", "tax", "date", "terms")
+            stop_pattern = re.compile(r"^(?:balance\s+due|item\b|subtotal\b|total\b|grand\s+total|amount\s+due|notes?\s*:|terms?\s*:|order\s+id\s*:)", re.IGNORECASE)
+            for raw_line in lines_after_header:
+                line = raw_line.strip()
+                if not line:
+                    continue
+                if stop_pattern.match(line):
+                    break
+                if re.match(r"^[A-Za-z][A-Za-z /_-]*\s*:", line):
+                    label = line.split(":", 1)[0].strip().lower()
+                    if label in ignored_contact_fields:
+                        continue
+                    # A labeled field belongs to the document, not the buyer block.
+                    break
+                candidate_lines.append(line)
+                if len(candidate_lines) >= 4:
+                    break
+
+            if candidate_lines:
+                first_line = candidate_lines[0]
+                # These invoices put the customer's name and city on one line
+                # after "Bill To: Ship To:". Split only when the remainder has
+                # address punctuation, which gives us a reasonable boundary.
+                person_address = re.match(r"^([A-Z][A-Za-z'’-]+\s+[A-Z][A-Za-z'’-]+)\s+(.+,\s*)$", first_line)
+                if person_address:
+                    buyer_name = person_address.group(1).strip()
+                    address_parts = [person_address.group(2).strip()]
+                    address_parts.extend(candidate_lines[1:])
+                    buyer_address = " ".join(address_parts).strip()
+                elif re.fullmatch(r"[A-Z][A-Za-z'’-]+\s+[A-Z][A-Za-z'’-]+", first_line):
+                    buyer_name = first_line
+                    buyer_address = " ".join(candidate_lines[1:]).strip() or None
+                else:
+                    buyer_company = first_line
+                    buyer_address = " ".join(candidate_lines[1:]).strip() or None
 
         # 7. Financial Summary Extraction
         subtotal, tax, shipping, grand_total = 0.0, 0.0, 0.0, 0.0
