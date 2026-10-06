@@ -61,7 +61,7 @@
         <div class="mt-5 grid gap-3 border-t border-slate-200 pt-4 sm:grid-cols-2"><input id="credentialId" type="hidden"><label class="text-sm font-medium text-slate-700">Name<input id="credentialLabel" placeholder="e.g. Finance team" class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal"></label><label class="text-sm font-medium text-slate-700">Model ID<input id="credentialModel" placeholder="Provider model ID" class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal"></label><label class="text-sm font-medium text-slate-700 sm:col-span-2">API key<input id="credentialApiKey" type="password" autocomplete="new-password" placeholder="Paste the API key" class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal"></label><div class="flex gap-2 sm:col-span-2"><button id="credentialSaveButton" onclick="saveCredential()" class="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white">Add API key</button><button onclick="resetCredentialForm()" class="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm">Clear</button></div></div>
       </div>
     </div>
-    <section id="availableCredentialsSection" class="hidden rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+    <section id="availableCredentialsSection" class="hidden mt-5 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
       <div class="mb-3"><h3 class="text-sm font-semibold text-slate-900">Available API keys</h3><p class="mt-1 text-xs text-slate-500">Saved keys are masked. Enter your PIN when switching, editing, or removing one.</p></div>
       <div id="credentialList" class="space-y-2"></div>
     </section>
