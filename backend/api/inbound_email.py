@@ -1,11 +1,10 @@
 import uuid
 from typing import List
-from fastapi import APIRouter, Request, BackgroundTasks, UploadFile, HTTPException, Depends
+from fastapi import APIRouter, Request, UploadFile, HTTPException, Depends
 from backend.config import settings
-from backend.database import DocumentRepository, UserRepository
+from backend.database import DocumentRepository, UserRepository, ProcessingRunRepository
 from backend.auth import current_user
 from backend.services.email_receiver import EmailReceiverService
-from backend.api.documents import process_and_dispatch
 
 router = APIRouter(prefix="/api/inbound", tags=["inbound_email"])
 
@@ -20,7 +19,7 @@ def _token_user(request: Request, token: str = ""):
     return user
 
 @router.post("/postmark")
-async def postmark_inbound_webhook(request: Request, background_tasks: BackgroundTasks):
+async def postmark_inbound_webhook(request: Request):
     """
     Receives inbound email webhook from Postmark Inbound.
     Extracts attachments (PDFs/images), saves and processes them.
@@ -55,13 +54,13 @@ async def postmark_inbound_webhook(request: Request, background_tasks: Backgroun
             user_id=user["id"],
         )
 
-        background_tasks.add_task(process_and_dispatch, doc_id, saved_path, att.content_type, user["id"])
+        ProcessingRunRepository.enqueue(doc_id, user["id"], str(saved_path), att.content_type or "application/octet-stream")
         processed.append({"id": doc_id, "filename": att.filename})
 
     return {"status": "success", "processed_attachments": len(processed), "documents": processed}
 
 @router.post("/sendgrid")
-async def sendgrid_inbound_webhook(request: Request, background_tasks: BackgroundTasks):
+async def sendgrid_inbound_webhook(request: Request):
     """
     Receives inbound email webhook from SendGrid Inbound Parse (multipart/form-data).
     """
@@ -103,13 +102,13 @@ async def sendgrid_inbound_webhook(request: Request, background_tasks: Backgroun
             user_id=user["id"],
         )
 
-        background_tasks.add_task(process_and_dispatch, doc_id, saved_path, att.content_type, user["id"])
+        ProcessingRunRepository.enqueue(doc_id, user["id"], str(saved_path), att.content_type or "application/octet-stream")
         processed.append({"id": doc_id, "filename": att.filename})
 
     return {"status": "success", "processed_attachments": len(processed), "documents": processed}
 
 @router.post("/test-mock")
-async def test_mock_email(background_tasks: BackgroundTasks, user: dict = Depends(current_user)):
+async def test_mock_email(user: dict = Depends(current_user)):
     """
     Simulates receiving an inbound email with a sample supplier purchase order.
     Useful for testing the email flow without setting up MX records.
@@ -136,7 +135,7 @@ async def test_mock_email(background_tasks: BackgroundTasks, user: dict = Depend
         user_id=user["id"],
     )
 
-    background_tasks.add_task(process_and_dispatch, doc_id, saved_path, "application/pdf", user["id"])
+    ProcessingRunRepository.enqueue(doc_id, user["id"], str(saved_path), "application/pdf")
     return {
         "status": "success",
         "message": "Mock inbound email received and queued for processing.",

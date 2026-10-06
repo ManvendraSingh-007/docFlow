@@ -3,10 +3,10 @@ import csv
 import io
 from pathlib import Path
 from typing import List, Optional
-from fastapi import APIRouter, UploadFile, File, HTTPException, BackgroundTasks, Query, Depends
+from fastapi import APIRouter, UploadFile, File, HTTPException, Query, Depends
 from fastapi.responses import StreamingResponse, FileResponse
 from backend.config import settings
-from backend.database import DocumentRepository, WebhookLogRepository, AccountSettingsRepository
+from backend.database import DocumentRepository, WebhookLogRepository, AccountSettingsRepository, ProcessingRunRepository
 from backend.auth import current_user
 from backend.models.document import (
     ParsedDocumentData,
@@ -19,7 +19,7 @@ from backend.services.webhook_dispatcher import WebhookDispatcher
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
 
-async def process_and_dispatch(doc_id: str, file_path: Path, mime_type: str, user_id: str):
+async def process_and_dispatch(doc_id: str, file_path: Path, mime_type: str, user_id: str) -> Optional[str]:
     try:
         account_settings = AccountSettingsRepository.get(user_id)
         # Extract structured data
@@ -47,6 +47,7 @@ async def process_and_dispatch(doc_id: str, file_path: Path, mime_type: str, use
                 WebhookLogRepository.log(doc_id, webhook_url, code, body, duration, success)
 
         DocumentRepository.update_parsed_data(doc_id, parsed_data, webhook_status, webhook_code, user_id)
+        return None
     except Exception as e:
         print(f"[Worker] Error processing document {doc_id}: {e}")
         # Update as failed
@@ -54,10 +55,10 @@ async def process_and_dispatch(doc_id: str, file_path: Path, mime_type: str, use
         empty_data.notes = f"Extraction failed: {str(e)}"
         DocumentValidator.validate(empty_data)
         DocumentRepository.update_parsed_data(doc_id, empty_data, WebhookStatus.FAILED, user_id=user_id)
+        return str(e)
 
 @router.post("/upload")
 async def upload_documents(
-    background_tasks: BackgroundTasks,
     files: List[UploadFile] = File(...),
     user: dict = Depends(current_user),
 ):
@@ -95,14 +96,13 @@ async def upload_documents(
             user_id=user["id"],
         )
 
-        # Trigger processing in background
-        background_tasks.add_task(process_and_dispatch, doc_id, saved_path, upload.content_type or "application/pdf", user["id"])
+        ProcessingRunRepository.enqueue(doc_id, user["id"], str(saved_path), upload.content_type or "application/pdf")
         
         results.append({
             "id": doc_id,
             "filename": upload.filename,
             "status": "PROCESSING",
-            "message": "File received and queued for parsing & arithmetic verification."
+            "message": "File received and queued for extraction and validation."
         })
 
     return {"uploaded": len(results), "documents": results}
@@ -120,6 +120,30 @@ def get_document(doc_id: str, user: dict = Depends(current_user)):
         raise HTTPException(status_code=404, detail="Document not found")
     logs = WebhookLogRepository.list_by_document(doc_id)
     return {"document": doc, "webhook_logs": logs}
+
+@router.get("/{doc_id}/runs")
+def list_document_runs(doc_id: str, user: dict = Depends(current_user)):
+    doc = DocumentRepository.get_by_id(doc_id, user_id=user["id"])
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    return {"runs": ProcessingRunRepository.list_for_document(doc_id, user["id"])}
+
+@router.post("/{doc_id}/retry")
+def retry_document_extraction(doc_id: str, user: dict = Depends(current_user)):
+    doc = DocumentRepository.get_by_id(doc_id, user_id=user["id"])
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    try:
+        run_id = ProcessingRunRepository.enqueue(doc_id, user["id"], doc["file_path"], _mime_type_for_document(doc))
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=str(error))
+    return {"message": "Extraction queued", "run_id": run_id}
+
+def _mime_type_for_document(doc: dict) -> str:
+    return {
+        "PDF": "application/pdf", "PNG": "image/png", "JPG": "image/jpeg",
+        "JPEG": "image/jpeg", "TIFF": "image/tiff", "WEBP": "image/webp",
+    }.get(doc.get("file_type", "").upper(), "application/octet-stream")
 
 @router.put("/{doc_id}")
 def update_document_data(doc_id: str, updated_data: ParsedDocumentData, user: dict = Depends(current_user)):

@@ -3,7 +3,7 @@ import json
 import os
 import secrets
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Dict, Any
 from urllib.parse import urlsplit, unquote
 from backend.config import DB_PATH, DATA_DIR, settings
@@ -132,6 +132,39 @@ def init_db():
                 FOREIGN KEY (document_id) REFERENCES documents (id)
             );
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS processing_runs (
+                id TEXT PRIMARY KEY,
+                document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+                user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                run_number INTEGER NOT NULL,
+                file_path TEXT NOT NULL,
+                mime_type TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'QUEUED',
+                attempt_count INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                started_at TEXT,
+                finished_at TEXT,
+                locked_until TEXT,
+                updated_at TEXT NOT NULL,
+                error TEXT,
+                provider TEXT,
+                model TEXT,
+                document_status TEXT,
+                outcome TEXT,
+                UNIQUE(document_id, run_number)
+            );
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_processing_runs_queue ON processing_runs(status, created_at)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_processing_runs_document ON processing_runs(document_id, run_number DESC)")
+        if isinstance(conn, sqlite3.Connection):
+            run_columns = {row["name"] for row in conn.execute("PRAGMA table_info(processing_runs)").fetchall()}
+            for name in ("document_status", "outcome"):
+                if name not in run_columns:
+                    conn.execute(f"ALTER TABLE processing_runs ADD COLUMN {name} TEXT")
+        else:
+            conn.execute("ALTER TABLE processing_runs ADD COLUMN IF NOT EXISTS document_status TEXT")
+            conn.execute("ALTER TABLE processing_runs ADD COLUMN IF NOT EXISTS outcome TEXT")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS app_settings (
                 key TEXT PRIMARY KEY,
@@ -481,6 +514,137 @@ class DocumentRepository:
         else:
             d["data"] = None
         return d
+
+class ProcessingRunRepository:
+    LOCK_MINUTES = 2
+
+    @classmethod
+    def enqueue(cls, doc_id: str, user_id: str, file_path: str, mime_type: str) -> str:
+        run_id = str(uuid.uuid4())
+        now = datetime.now(timezone.utc).isoformat()
+        conn = get_connection()
+        try:
+            with conn:
+                if isinstance(conn, sqlite3.Connection):
+                    conn.execute("BEGIN IMMEDIATE")
+                else:
+                    conn.execute("SELECT id FROM documents WHERE id = ? AND user_id = ? FOR UPDATE", (doc_id, user_id)).fetchone()
+                active = conn.execute("SELECT id FROM processing_runs WHERE document_id = ? AND status IN ('QUEUED', 'RUNNING') LIMIT 1", (doc_id,)).fetchone()
+                if active:
+                    raise ValueError("An extraction run is already queued or running for this document")
+                row = conn.execute("SELECT COALESCE(MAX(run_number), 0) + 1 AS next_run FROM processing_runs WHERE document_id = ?", (doc_id,)).fetchone()
+                run_number = row["next_run"]
+                conn.execute("""
+                    INSERT INTO processing_runs (id, document_id, user_id, run_number, file_path, mime_type, status, attempt_count, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, 'QUEUED', 0, ?, ?)
+                """, (run_id, doc_id, user_id, run_number, str(file_path), mime_type, now, now))
+                conn.execute("UPDATE documents SET status = ?, updated_at = ? WHERE id = ? AND user_id = ?",
+                             (DocumentStatus.PROCESSING.value, now, doc_id, user_id))
+        finally:
+            conn.close()
+        return run_id
+
+    @classmethod
+    def claim_next(cls) -> Optional[Dict[str, Any]]:
+        now_dt = datetime.now(timezone.utc)
+        now = now_dt.isoformat()
+        locked_until = (now_dt + timedelta(minutes=cls.LOCK_MINUTES)).isoformat()
+        conn = get_connection()
+        claimed = None
+        try:
+            with conn:
+                if isinstance(conn, sqlite3.Connection):
+                    conn.execute("BEGIN IMMEDIATE")
+                    row = conn.execute("""
+                        SELECT * FROM processing_runs
+                        WHERE status = 'QUEUED' OR (status = 'RUNNING' AND locked_until <= ?)
+                        ORDER BY created_at ASC LIMIT 1
+                    """, (now,)).fetchone()
+                else:
+                    row = conn.execute("""
+                        SELECT * FROM processing_runs
+                        WHERE status = 'QUEUED' OR (status = 'RUNNING' AND locked_until <= ?)
+                        ORDER BY created_at ASC LIMIT 1 FOR UPDATE SKIP LOCKED
+                    """, (now,)).fetchone()
+                if row:
+                    run = dict(row)
+                    conn.execute("""
+                        UPDATE processing_runs SET status = 'RUNNING', attempt_count = attempt_count + 1,
+                            started_at = COALESCE(started_at, ?), locked_until = ?, updated_at = ?, error = NULL
+                        WHERE id = ?
+                    """, (now, locked_until, now, run["id"]))
+                    run["status"] = "RUNNING"
+                    run["attempt_count"] += 1
+                    run["locked_until"] = locked_until
+                    claimed = run
+        finally:
+            conn.close()
+        return claimed
+
+    @classmethod
+    def heartbeat(cls, run_id: str) -> None:
+        now_dt = datetime.now(timezone.utc)
+        conn = get_connection()
+        with conn:
+            conn.execute("UPDATE processing_runs SET locked_until = ?, updated_at = ? WHERE id = ? AND status = 'RUNNING'",
+                         ((now_dt + timedelta(minutes=cls.LOCK_MINUTES)).isoformat(), now_dt.isoformat(), run_id))
+        conn.close()
+
+    @classmethod
+    def finish(cls, run_id: str, status: str, error: Optional[str] = None,
+               provider: Optional[str] = None, model: Optional[str] = None,
+               document_status: Optional[str] = None, outcome: Optional[str] = None) -> None:
+        now = datetime.now(timezone.utc).isoformat()
+        conn = get_connection()
+        with conn:
+            conn.execute("""
+                UPDATE processing_runs SET status = ?, error = ?, provider = ?, model = ?, document_status = ?, outcome = ?,
+                    finished_at = ?, locked_until = NULL, updated_at = ? WHERE id = ?
+            """, (status, error[:1000] if error else None, provider, model, document_status, outcome[:1000] if outcome else None, now, now, run_id))
+        conn.close()
+
+    @classmethod
+    def requeue(cls, run_id: str) -> None:
+        now = datetime.now(timezone.utc).isoformat()
+        conn = get_connection()
+        with conn:
+            conn.execute("UPDATE processing_runs SET status = 'QUEUED', locked_until = NULL, updated_at = ?, error = 'Worker stopped; returned to queue' WHERE id = ? AND status = 'RUNNING'", (now, run_id))
+        conn.close()
+
+    @classmethod
+    def is_active(cls, doc_id: str) -> bool:
+        conn = get_connection()
+        row = conn.execute("SELECT 1 FROM processing_runs WHERE document_id = ? AND status IN ('QUEUED', 'RUNNING') LIMIT 1", (doc_id,)).fetchone()
+        conn.close()
+        return bool(row)
+
+    @classmethod
+    def list_for_document(cls, doc_id: str, user_id: str) -> List[Dict[str, Any]]:
+        conn = get_connection()
+        rows = conn.execute("""
+            SELECT id, document_id, user_id, run_number, status, attempt_count, created_at,
+                started_at, finished_at, updated_at, error, provider, model, document_status, outcome
+            FROM processing_runs WHERE document_id = ? AND user_id = ? ORDER BY run_number DESC
+        """, (doc_id, user_id)).fetchall()
+        conn.close()
+        return [dict(row) for row in rows]
+
+    @classmethod
+    def recover_orphans(cls) -> None:
+        conn = get_connection()
+        rows = conn.execute("""
+            SELECT d.id, d.user_id, d.file_path, d.file_type FROM documents d
+            LEFT JOIN processing_runs r ON r.document_id = d.id
+            WHERE d.status = 'PROCESSING' AND r.id IS NULL
+        """).fetchall()
+        conn.close()
+        mime_types = {"PDF": "application/pdf", "PNG": "image/png", "JPG": "image/jpeg", "JPEG": "image/jpeg", "WEBP": "image/webp", "TIFF": "image/tiff"}
+        for row in rows:
+            try:
+                cls.enqueue(row["id"], row["user_id"], row["file_path"], mime_types.get(row["file_type"], "application/octet-stream"))
+            except ValueError:
+                pass
+
 
 class WebhookLogRepository:
     @classmethod

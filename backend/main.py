@@ -1,4 +1,5 @@
 import os
+import asyncio
 from pathlib import Path
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
@@ -8,7 +9,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from starlette.middleware.sessions import SessionMiddleware
 
 from backend.config import settings, BASE_DIR, UPLOADS_DIR
-from backend.database import init_db, DocumentRepository, WebhookLogRepository, AccountSettingsRepository
+from backend.database import init_db, DocumentRepository, WebhookLogRepository, AccountSettingsRepository, ProcessingRunRepository
 from backend.api import documents_router, inbound_router, settings_router
 from backend.api.auth import router as auth_router
 from backend.auth import csrf_token_for, user_for_page
@@ -18,7 +19,16 @@ from backend.security import get_app_secret
 async def lifespan(app: FastAPI):
     # Startup: ensure SQLite database and directories are initialized
     init_db()
-    yield
+    from backend.services.processing_queue import processing_worker
+    worker_task = asyncio.create_task(processing_worker())
+    try:
+        yield
+    finally:
+        worker_task.cancel()
+        try:
+            await worker_task
+        except asyncio.CancelledError:
+            pass
 
 app = FastAPI(
     title="DocFlow",
@@ -94,6 +104,7 @@ async def document_detail_view(request: Request, doc_id: str):
             "current_user": user,
             "csrf_token": csrf_token_for(request),
             "webhook_logs": WebhookLogRepository.list_by_document(doc_id),
+            "processing_runs": ProcessingRunRepository.list_for_document(doc_id, user["id"]),
         }
     )
 
