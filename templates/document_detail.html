@@ -368,10 +368,11 @@ async function saveAndRevalidate() {
       body: JSON.stringify(payload)
     });
     const result = await res.json();
-    alert("Invoice details saved and checks rerun.");
-    window.location.reload();
+    if (!res.ok) throw new Error(result.detail || "Request failed");
+    window.showToast("Invoice details saved and checks rerun.");
+    window.setTimeout(() => window.location.reload(), 900);
   } catch (e) {
-    alert("Error saving: " + e.message);
+    window.showToast("Could not save invoice details: " + e.message, "error");
   }
 }
 
@@ -384,13 +385,13 @@ async function dispatchWebhook() {
     const res = await fetch(`/api/documents/${docId}/dispatch`, { method: "POST", headers: { "X-CSRF-Token": document.querySelector('meta[name="csrf-token"]').content } });
     const result = await res.json();
     if (result.success) {
-      alert(`Webhook Delivered! (Status: ${result.status_code}, ${result.duration_ms}ms)`);
+      window.showToast(`Webhook delivered: HTTP ${result.status_code} in ${result.duration_ms}ms.`);
     } else {
-      alert(`Webhook Dispatch Failed: ${result.response || 'Check webhook URL'}`);
+      window.showToast(`Webhook delivery failed: ${result.response || 'Check webhook URL.'}`, "error");
     }
-    window.location.reload();
+    window.setTimeout(() => window.location.reload(), 900);
   } catch (e) {
-    alert("Dispatch error: " + e.message);
+    window.showToast("Webhook dispatch error: " + e.message, "error");
     btn.disabled = false;
     btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:14px;">send</span> Dispatch Webhook';
   }

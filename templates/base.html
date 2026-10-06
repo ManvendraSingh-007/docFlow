@@ -87,9 +87,7 @@
       <div class="flex items-center justify-between h-16">
         <div class="flex items-center space-x-3">
           <a href="/" class="flex items-center space-x-2">
-            <div class="w-9 h-9 rounded-lg bg-slate-900 text-white flex items-center justify-center shadow-sm">
-              <span class="material-symbols-outlined">bolt</span>
-            </div>
+            <span class="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white shadow-sm"><img src="/static/docflow-logo.svg" alt="" class="h-7 w-7"></span>
             <span class="text-xl font-bold tracking-tight text-slate-900">Doc<span class="text-slate-500">Flow</span></span>
           </a>
         </div>
@@ -124,12 +122,49 @@
 
   <footer class="mt-auto border-t border-slate-200 bg-white">
     <div class="mx-auto flex max-w-7xl flex-col gap-5 px-4 py-6 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
-      <div class="flex items-center gap-2 text-sm text-slate-500"><span class="flex h-7 w-7 items-center justify-center rounded-md bg-slate-900 text-white"><span class="material-symbols-outlined" style="font-size:16px">bolt</span></span><span>© 2026 DocFlow</span></div>
+      <div class="flex items-center gap-2 text-sm text-slate-500"><span class="flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 bg-white"><img src="/static/docflow-logo.svg" alt="" class="h-5 w-5"></span><span>© 2026 DocFlow</span></div>
       <nav aria-label="Footer" class="flex flex-wrap gap-x-6 gap-y-2 text-xs font-medium text-slate-500">
         <a href="/" class="hover:text-slate-900">Overview</a><a href="/settings" class="hover:text-slate-900">Settings</a><a href="mailto:support@docflow.example" class="hover:text-slate-900">Support</a><a href="#" class="hover:text-slate-900">Privacy</a><a href="#" class="hover:text-slate-900">Terms</a>
       </nav>
     </div>
   </footer>
+
+  <div id="appToast" class="pointer-events-none fixed bottom-5 right-5 z-[80] hidden max-w-sm rounded-xl border bg-white px-4 py-3 text-sm font-medium shadow-xl" role="status" aria-live="polite"></div>
+  <div id="confirmDialog" class="fixed inset-0 z-[90] hidden items-center justify-center bg-slate-950/40 p-4" role="presentation">
+    <section class="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="confirmTitle" aria-describedby="confirmMessage">
+      <div class="flex items-start gap-4"><span id="confirmIcon" class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-700"><span class="material-symbols-outlined">help</span></span><div><h2 id="confirmTitle" class="text-base font-semibold text-slate-900">Please confirm</h2><p id="confirmMessage" class="mt-2 text-sm leading-6 text-slate-600"></p></div></div>
+      <div class="mt-6 flex justify-end gap-3"><button id="confirmCancel" type="button" class="rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">Cancel</button><button id="confirmAccept" type="button" class="rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-700">Continue</button></div>
+    </section>
+  </div>
+  <script>
+    window.showToast = function(message, type = "success") {
+      const toast = document.getElementById("appToast");
+      toast.textContent = message;
+      toast.className = `pointer-events-none fixed bottom-5 right-5 z-[80] max-w-sm rounded-xl border px-4 py-3 text-sm font-medium shadow-xl ${type === "error" ? "border-red-200 bg-white text-red-700" : "border-slate-200 bg-white text-slate-800"}`;
+      clearTimeout(window._toastTimer);
+      window._toastTimer = setTimeout(() => toast.classList.add("hidden"), 4500);
+    };
+    window.showConfirm = function({ title = "Please confirm", message, confirmText = "Continue", danger = false }) {
+      const dialog = document.getElementById("confirmDialog");
+      const accept = document.getElementById("confirmAccept");
+      const cancel = document.getElementById("confirmCancel");
+      const icon = document.getElementById("confirmIcon");
+      document.getElementById("confirmTitle").textContent = title;
+      document.getElementById("confirmMessage").textContent = message;
+      accept.textContent = confirmText;
+      accept.className = `rounded-lg px-4 py-2.5 text-sm font-semibold text-white ${danger ? "bg-red-700 hover:bg-red-800" : "bg-slate-900 hover:bg-slate-700"}`;
+      icon.className = `flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${danger ? "bg-red-50 text-red-700" : "bg-slate-100 text-slate-700"}`;
+      dialog.classList.remove("hidden"); dialog.classList.add("flex");
+      cancel.focus();
+      return new Promise(resolve => {
+        const finish = value => { dialog.classList.add("hidden"); dialog.classList.remove("flex"); accept.removeEventListener("click", yes); cancel.removeEventListener("click", no); dialog.removeEventListener("click", outside); document.removeEventListener("keydown", keydown); resolve(value); };
+        const yes = () => finish(true), no = () => finish(false);
+        const outside = event => { if (event.target === dialog) no(); };
+        const keydown = event => { if (event.key === "Escape") no(); };
+        accept.addEventListener("click", yes); cancel.addEventListener("click", no); dialog.addEventListener("click", outside); document.addEventListener("keydown", keydown);
+      });
+    };
+  </script>
 
   {% block scripts %}{% endblock %}
 </body>

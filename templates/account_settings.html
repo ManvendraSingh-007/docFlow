@@ -178,7 +178,7 @@ async function savePassword() {
 }
 
 async function rotateInboundToken() {
-  if (!confirm("Replace the current email intake token? Existing integrations will stop working.")) return;
+  if (!await window.showConfirm({ title: "Replace email intake token?", message: "Existing email integrations using the current token will stop working until you update them.", confirmText: "Replace token", danger: true })) return;
   try {
     const data = await requestJson("/api/settings/inbound-token/rotate", "POST");
     const input = document.getElementById("inboundToken");

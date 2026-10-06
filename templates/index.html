@@ -145,7 +145,7 @@ async function handleFileUpload(event) {
     feedback.innerText = `Uploaded ${data.uploaded} document(s). Waiting for extraction...`;
     setTimeout(() => window.location.reload(), 1200);
   } catch (err) {
-    alert("Upload failed: " + err.message);
+    window.showToast("Upload failed: " + err.message, "error");
     feedback.classList.add("hidden");
   }
 }
@@ -161,12 +161,13 @@ function handleFileDrop(e) {
 }
 
 async function deleteDoc(id) {
-  if (!confirm("Are you sure you want to delete this document?")) return;
+  if (!await window.showConfirm({ title: "Delete document?", message: "This removes the document and its extracted details from your workspace. This cannot be undone.", confirmText: "Delete document", danger: true })) return;
   try {
-    await fetch(`/api/documents/${id}`, { method: "DELETE", headers: { "X-CSRF-Token": document.querySelector('meta[name="csrf-token"]').content } });
+    const response = await fetch(`/api/documents/${id}`, { method: "DELETE", headers: { "X-CSRF-Token": document.querySelector('meta[name="csrf-token"]').content } });
+    if (!response.ok) { const data = await response.json(); throw new Error(data.detail || "Request failed"); }
     window.location.reload();
   } catch (e) {
-    alert("Error deleting document: " + e.message);
+    window.showToast("Could not delete document: " + e.message, "error");
   }
 }
 
