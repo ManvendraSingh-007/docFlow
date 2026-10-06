@@ -78,6 +78,9 @@ def init_db():
                 default_provider TEXT NOT NULL DEFAULT 'auto',
                 gemini_api_key_enc TEXT NOT NULL DEFAULT '',
                 openai_api_key_enc TEXT NOT NULL DEFAULT '',
+                mistral_api_key_enc TEXT NOT NULL DEFAULT '',
+                openrouter_api_key_enc TEXT NOT NULL DEFAULT '',
+                openrouter_model TEXT NOT NULL DEFAULT 'google/gemini-2.5-flash',
                 auto_dispatch_on_verified INTEGER NOT NULL DEFAULT 0,
                 inbound_token_hash TEXT NOT NULL,
                 inbound_token_enc TEXT NOT NULL,
@@ -134,10 +137,17 @@ def init_db():
             );
         """)
         if isinstance(conn, sqlite3.Connection):
+            settings_columns = {row["name"] for row in conn.execute("PRAGMA table_info(account_settings)").fetchall()}
+            for name, definition in (("mistral_api_key_enc", "TEXT NOT NULL DEFAULT ''"), ("openrouter_api_key_enc", "TEXT NOT NULL DEFAULT ''"), ("openrouter_model", "TEXT NOT NULL DEFAULT 'google/gemini-2.5-flash'")):
+                if name not in settings_columns:
+                    conn.execute(f"ALTER TABLE account_settings ADD COLUMN {name} {definition}")
             columns = {row["name"] for row in conn.execute("PRAGMA table_info(documents)").fetchall()}
             if "user_id" not in columns:
                 conn.execute("ALTER TABLE documents ADD COLUMN user_id TEXT REFERENCES users(id) ON DELETE CASCADE")
         else:
+            conn.execute("ALTER TABLE account_settings ADD COLUMN IF NOT EXISTS mistral_api_key_enc TEXT NOT NULL DEFAULT ''")
+            conn.execute("ALTER TABLE account_settings ADD COLUMN IF NOT EXISTS openrouter_api_key_enc TEXT NOT NULL DEFAULT ''")
+            conn.execute("ALTER TABLE account_settings ADD COLUMN IF NOT EXISTS openrouter_model TEXT NOT NULL DEFAULT 'google/gemini-2.5-flash'")
             conn.execute("ALTER TABLE documents ADD COLUMN IF NOT EXISTS user_id TEXT REFERENCES users(id) ON DELETE CASCADE")
     conn.close()
 
@@ -280,7 +290,7 @@ class AccountSettingsRepository:
         if not row:
             return {}
         result = dict(row)
-        for field in ("webhook_secret_enc", "gemini_api_key_enc", "openai_api_key_enc", "inbound_token_enc"):
+        for field in ("webhook_secret_enc", "gemini_api_key_enc", "openai_api_key_enc", "mistral_api_key_enc", "openrouter_api_key_enc", "inbound_token_enc"):
             result[field.removesuffix("_enc")] = decrypt_secret(result.get(field))
         return result
 
@@ -293,6 +303,9 @@ class AccountSettingsRepository:
             "default_provider": values.get("default_provider", current.get("default_provider", "auto")),
             "gemini_api_key_enc": encrypt_secret(values.get("gemini_api_key", current.get("gemini_api_key", ""))),
             "openai_api_key_enc": encrypt_secret(values.get("openai_api_key", current.get("openai_api_key", ""))),
+            "mistral_api_key_enc": encrypt_secret(values.get("mistral_api_key", current.get("mistral_api_key", ""))),
+            "openrouter_api_key_enc": encrypt_secret(values.get("openrouter_api_key", current.get("openrouter_api_key", ""))),
+            "openrouter_model": values.get("openrouter_model", current.get("openrouter_model", "google/gemini-2.5-flash")),
             "auto_dispatch_on_verified": int(values.get("auto_dispatch_on_verified", current.get("auto_dispatch_on_verified", 0))),
             "updated_at": datetime.now(timezone.utc).isoformat(),
             "user_id": user_id,
@@ -301,11 +314,11 @@ class AccountSettingsRepository:
         with conn:
             conn.execute("""
                 UPDATE account_settings SET webhook_url = ?, webhook_secret_enc = ?, default_provider = ?,
-                    gemini_api_key_enc = ?, openai_api_key_enc = ?, auto_dispatch_on_verified = ?, updated_at = ?
+                    gemini_api_key_enc = ?, openai_api_key_enc = ?, mistral_api_key_enc = ?, openrouter_api_key_enc = ?, openrouter_model = ?, auto_dispatch_on_verified = ?, updated_at = ?
                 WHERE user_id = ?
             """, tuple(fields[key] for key in (
                 "webhook_url", "webhook_secret_enc", "default_provider", "gemini_api_key_enc",
-                "openai_api_key_enc", "auto_dispatch_on_verified", "updated_at", "user_id",
+                "openai_api_key_enc", "mistral_api_key_enc", "openrouter_api_key_enc", "openrouter_model", "auto_dispatch_on_verified", "updated_at", "user_id",
             )))
         conn.close()
 

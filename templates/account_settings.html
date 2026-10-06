@@ -46,13 +46,18 @@
           <option value="auto">Automatic (AI provider, then local parser)</option>
           <option value="gemini">Google Gemini</option>
           <option value="openai">OpenAI</option>
+          <option value="mistral">Mistral</option>
+          <option value="openrouter">OpenRouter</option>
           <option value="heuristic">Local PDF parser</option>
         </select>
       </label>
       <div class="grid gap-4 sm:grid-cols-2">
         <label class="text-sm font-medium text-slate-700">Gemini API key<input id="geminiKey" type="password" autocomplete="off" placeholder="Leave blank to keep saved key" class="mt-1.5 w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-normal"></label>
         <label class="text-sm font-medium text-slate-700">OpenAI API key<input id="openaiKey" type="password" autocomplete="off" placeholder="Leave blank to keep saved key" class="mt-1.5 w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-normal"></label>
+        <label class="text-sm font-medium text-slate-700">Mistral API key<input id="mistralKey" type="password" autocomplete="off" placeholder="Leave blank to keep saved key" class="mt-1.5 w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-normal"></label>
+        <label class="text-sm font-medium text-slate-700">OpenRouter API key<input id="openrouterKey" type="password" autocomplete="off" placeholder="Leave blank to keep saved key" class="mt-1.5 w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-normal"></label>
       </div>
+      <label class="block text-sm font-medium text-slate-700">OpenRouter model ID<input id="openrouterModel" value="google/gemini-2.5-flash" placeholder="provider/model" class="mt-1.5 w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-normal"><span class="mt-1 block text-xs font-normal text-slate-500">Choose a vision capable model from OpenRouter’s model catalog.</span></label>
       <p id="providerStatus" class="text-xs text-slate-500"></p>
       <button onclick="saveSettings()" class="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800">Save extraction settings</button>
     </div>
@@ -116,9 +121,12 @@ async function loadSettings() {
     document.getElementById("webhookUrl").value = data.webhook_url || "";
     document.getElementById("autoDispatch").checked = data.auto_dispatch_on_verified;
     document.getElementById("defaultProvider").value = data.default_provider || "auto";
+    document.getElementById("openrouterModel").value = data.openrouter_model || "google/gemini-2.5-flash";
     const providers = [];
     if (data.gemini_api_key_configured) providers.push("Gemini");
     if (data.openai_api_key_configured) providers.push("OpenAI");
+    if (data.mistral_api_key_configured) providers.push("Mistral");
+    if (data.openrouter_api_key_configured) providers.push("OpenRouter");
     document.getElementById("providerStatus").textContent = providers.length ? `Connected: ${providers.join(", ")}` : "No AI provider key saved. The local parser will be used.";
     document.getElementById("inboundTokenStatus").textContent = data.inbound_token_configured ? "A token is active." : "No token created.";
   } catch (error) {
@@ -130,18 +138,25 @@ async function saveSettings() {
   const payload = {
     webhook_url: document.getElementById("webhookUrl").value,
     default_provider: document.getElementById("defaultProvider").value,
+    openrouter_model: document.getElementById("openrouterModel").value.trim(),
     auto_dispatch_on_verified: document.getElementById("autoDispatch").checked
   };
   const gemini = document.getElementById("geminiKey").value;
   const openai = document.getElementById("openaiKey").value;
+  const mistral = document.getElementById("mistralKey").value;
+  const openrouter = document.getElementById("openrouterKey").value;
   const secret = document.getElementById("webhookSecret").value;
   if (gemini) payload.gemini_api_key = gemini;
   if (openai) payload.openai_api_key = openai;
+  if (mistral) payload.mistral_api_key = mistral;
+  if (openrouter) payload.openrouter_api_key = openrouter;
   if (secret) payload.webhook_secret = secret;
   try {
     await requestJson("/api/settings", "POST", payload);
     document.getElementById("geminiKey").value = "";
     document.getElementById("openaiKey").value = "";
+    document.getElementById("mistralKey").value = "";
+    document.getElementById("openrouterKey").value = "";
     document.getElementById("webhookSecret").value = "";
     showMessage("Settings saved.");
     loadSettings();

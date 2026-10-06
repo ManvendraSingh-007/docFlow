@@ -15,6 +15,9 @@ class SettingsUpdatePayload(BaseModel):
     default_provider: Optional[str] = None
     gemini_api_key: Optional[str] = None
     openai_api_key: Optional[str] = None
+    mistral_api_key: Optional[str] = None
+    openrouter_api_key: Optional[str] = None
+    openrouter_model: Optional[str] = None
     auto_dispatch_on_verified: Optional[bool] = None
 
 @router.get("")
@@ -27,6 +30,9 @@ def get_current_settings(user: dict = Depends(current_user)):
         "auto_dispatch_on_verified": bool(account.get("auto_dispatch_on_verified")),
         "gemini_api_key_configured": bool(account.get("gemini_api_key")),
         "openai_api_key_configured": bool(account.get("openai_api_key")),
+        "mistral_api_key_configured": bool(account.get("mistral_api_key")),
+        "openrouter_api_key_configured": bool(account.get("openrouter_api_key")),
+        "openrouter_model": account.get("openrouter_model", "google/gemini-2.5-flash"),
         "inbound_token_configured": bool(account.get("inbound_token")),
         "full_name": user["full_name"],
         "email": user["email"],
@@ -36,8 +42,10 @@ def get_current_settings(user: dict = Depends(current_user)):
 @router.post("")
 def update_settings(payload: SettingsUpdatePayload, user: dict = Depends(current_user)):
     values = payload.model_dump(exclude_unset=True)
-    if values.get("default_provider") not in (None, "auto", "gemini", "openai", "heuristic"):
+    if values.get("default_provider") not in (None, "auto", "gemini", "openai", "mistral", "openrouter", "heuristic"):
         raise HTTPException(status_code=422, detail="Choose a supported extraction provider")
+    if values.get("openrouter_model") is not None and (not values["openrouter_model"].strip() or len(values["openrouter_model"]) > 160):
+        raise HTTPException(status_code=422, detail="Enter a valid OpenRouter model ID")
     webhook_url = values.get("webhook_url")
     if webhook_url and not re.fullmatch(r"https?://[^\s]+", webhook_url):
         raise HTTPException(status_code=422, detail="Webhook URL must use HTTP or HTTPS")

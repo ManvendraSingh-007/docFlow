@@ -86,6 +86,8 @@ class DocumentExtractor:
         account_settings = account_settings or {}
         gemini_api_key = account_settings.get("gemini_api_key") or ("" if use_account_credentials else settings.gemini_api_key)
         openai_api_key = account_settings.get("openai_api_key") or ("" if use_account_credentials else settings.openai_api_key)
+        mistral_api_key = account_settings.get("mistral_api_key", "")
+        openrouter_api_key = account_settings.get("openrouter_api_key", "")
         provider = (account_settings.get("default_provider") or settings.default_provider).lower()
 
         # Decide provider
@@ -94,6 +96,10 @@ class DocumentExtractor:
                 provider = "gemini"
             elif openai_api_key:
                 provider = "openai"
+            elif mistral_api_key:
+                provider = "mistral"
+            elif openrouter_api_key:
+                provider = "openrouter"
             else:
                 provider = "heuristic"
 
@@ -109,6 +115,19 @@ class DocumentExtractor:
                 parsed_data = await cls._extract_with_openai(file_path, mime_type, openai_api_key)
             except Exception as e:
                 print(f"[Extractor] OpenAI extraction failed, falling back to layout parser: {e}")
+                parsed_data = await cls._extract_smart_layout(file_path)
+        elif provider == "mistral" and mistral_api_key:
+            try:
+                parsed_data = await cls._extract_with_compatible_vision(file_path, mime_type, mistral_api_key, "https://api.mistral.ai/v1/chat/completions", "mistral-small-2506")
+            except Exception as e:
+                print(f"[Extractor] Mistral extraction failed, falling back to layout parser: {e}")
+                parsed_data = await cls._extract_smart_layout(file_path)
+        elif provider == "openrouter" and openrouter_api_key:
+            try:
+                model = account_settings.get("openrouter_model") or "google/gemini-2.5-flash"
+                parsed_data = await cls._extract_with_compatible_vision(file_path, mime_type, openrouter_api_key, "https://openrouter.ai/api/v1/chat/completions", model)
+            except Exception as e:
+                print(f"[Extractor] OpenRouter extraction failed, falling back to layout parser: {e}")
                 parsed_data = await cls._extract_smart_layout(file_path)
         else:
             parsed_data = await cls._extract_smart_layout(file_path)
@@ -170,8 +189,11 @@ class DocumentExtractor:
 
     @classmethod
     async def _extract_with_openai(cls, file_path: Path, mime_type: str, api_key: Optional[str] = None) -> ParsedDocumentData:
+        return await cls._extract_with_compatible_vision(file_path, mime_type, api_key or settings.openai_api_key, "https://api.openai.com/v1/chat/completions", "gpt-4o-mini")
+
+    @classmethod
+    async def _extract_with_compatible_vision(cls, file_path: Path, mime_type: str, api_key: str, endpoint: str, model: str) -> ParsedDocumentData:
         import base64
-        api_key = api_key or settings.openai_api_key
 
         prompt = (
             f"{SYSTEM_PROMPT}\n"
@@ -191,7 +213,7 @@ class DocumentExtractor:
             "Content-Type": "application/json"
         }
         payload = {
-            "model": "gpt-4o-mini",
+            "model": model,
             "messages": [
                 {
                     "role": "user",
@@ -202,7 +224,7 @@ class DocumentExtractor:
         }
 
         async with httpx.AsyncClient(timeout=45.0) as client:
-            resp = await client.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload)
+            resp = await client.post(endpoint, headers=headers, json=payload)
             resp.raise_for_status()
             data = resp.json()
 
