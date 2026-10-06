@@ -53,6 +53,61 @@ def test_invoice_metadata_can_come_from_secondary_text_extraction():
     assert document.document_number == "4235"
 
 
+def test_superstore_invoice_layout_extracts_wrapped_items_discount_and_balance():
+    text = """SuperStore INVOICE
+# 36258
+Date: Mar 06 2012
+Bill To: Ship To:
+Ship Mode: First Class
+Aaron Bergman 98103, Seattle,
+Washington, United
+Balance Due: $50.10
+States
+Item Quantity Rate Amount
+Global Push Button Manager's Chair, Indigo 1 $48.71 $48.71
+Chairs, Furniture, FUR-CH-4421
+Subtotal: $48.71
+Discount (20%): $9.74
+Shipping: $11.13
+Total: $50.10
+Notes:
+Thanks for your business!
+Terms:
+Order ID : CA-2012-AB10015140-40974"""
+
+    document = DocumentExtractor._parse_layout_document(text, [text], [[['Item', 'Quantity', 'Rate', 'Amount']]], "invoice_36258.pdf")
+
+    assert document.document_number == "36258"
+    assert document.vendor.name == "SuperStore"
+    assert len(document.line_items) == 1
+    item = document.line_items[0]
+    assert item.sku == "FUR-CH-4421"
+    assert item.description == "Global Push Button Manager's Chair, Indigo Chairs, Furniture"
+    assert item.quantity == 1
+    assert item.unit_price == 48.71
+    assert item.line_total == 48.71
+    assert document.summary.subtotal == 48.71
+    assert document.summary.discount_amount == 9.74
+    assert document.summary.shipping_amount == 11.13
+    assert document.summary.grand_total == 50.10
+    assert document.vendor.phone is None
+
+
+def test_empty_invoice_does_not_invent_vendor_or_document_number():
+    text = """INVOICE
+Date: Jun 5, 2023
+Bill To: Balance Due: $0.00
+Item Quantity Rate Amount
+Total: $0.00"""
+
+    document = DocumentExtractor._parse_layout_document(text, [text], [], "empty_invoice.pdf")
+
+    assert document.document_number is None
+    assert document.vendor.name is None
+    assert document.vendor.phone is None
+    assert document.line_items == []
+
+
 def test_textless_pdf_does_not_return_fabricated_invoice_data(tmp_path):
     pdf_path = tmp_path / "scan.pdf"
     writer = PdfWriter()

@@ -315,9 +315,6 @@ class DocumentExtractor:
                 if cand.lower() not in ["number", "date", "to", "none", "due", "after", "terms"]:
                     doc_number = cand
                     break
-        if not doc_number:
-            doc_number = f"DOC-{abs(hash(filename)) % 100000:05d}"
-
         # 4. Document Date Detection
         doc_date = None
         date_patterns = [
@@ -345,14 +342,14 @@ class DocumentExtractor:
             vendor_email = email_m.group(1)
 
         # Phone
-        phone_m = re.search(r"(?:Phone|Tel|Mobile|Fax)?[:\s]*(\+?[0-9][0-9\s\-()]{7,18}[0-9])", full_text)
+        phone_m = re.search(r"\b(?:Phone|Telephone|Tel|Mobile|Fax)\s*[:#]?\s*(\+?[0-9][0-9\s\-()]{7,18}[0-9])", full_text, re.IGNORECASE)
         if phone_m:
             vendor_phone = phone_m.group(1).strip()
 
         vendor_m = re.search(r"^\s*([^\n]+?)\s+SHIP TO:", full_text, re.IGNORECASE | re.MULTILINE)
         if vendor_m:
             candidate_vendor = vendor_m.group(1).strip()
-            if candidate_vendor.lower().strip(" :") not in {"to", "bill", "ship"}:
+            if candidate_vendor.lower().strip(" :") not in {"to", "bill", "ship", "bill to", "ship to"}:
                 vendor_name = candidate_vendor
 
         # Vendor Name: inspect top lines of page 0
@@ -360,17 +357,19 @@ class DocumentExtractor:
             first_lines = [l.strip() for l in pages_text[0].split("\n") if l.strip()]
             for line in first_lines[:8]:
                 lower = line.lower()
-                if any(w in lower for w in ["invoice", "purchase order", "tel:", "fax:", "web:", "email:", "date", "to:", "ship to", "page"]):
+                if "invoice" in lower:
+                    candidate = re.split(r"\binvoice\b", line, maxsplit=1, flags=re.IGNORECASE)[0].strip(" #-:")
+                    if candidate:
+                        vendor_name = candidate
+                        break
+                    continue
+                if any(w in lower for w in ["invoice", "purchase order", "tel:", "fax:", "web:", "email:", "date", "to:", "ship to", "ship mode", "page", "item quantity", "balance due", "subtotal", "total:"]):
+                    continue
+                if re.fullmatch(r"[#\s\d.,-]+", line):
                     continue
                 if len(line) > 2 and not line.startswith("+"):
-                    if "invoice" in lower:
-                        parts = line.split()
-                        if len(parts) >= 3 and parts[-1].isalpha():
-                            vendor_name = parts[-1]
-                            break
-                    else:
-                        vendor_name = line
-                        break
+                    vendor_name = line
+                    break
         if not vendor_name:
             vendor_name = None
 
@@ -410,8 +409,17 @@ class DocumentExtractor:
         if m_ship:
             shipping = clean_num(m_ship.group(1))
 
+        discount = 0.0
+        m_discount = re.search(
+            r"\b(?:DISCOUNT|LESS)\b\s*(?:\([^)]*\))?\s*[:\s-]*[€$£]?\s*([0-9,]+(?:\.[0-9]{1,2})?)",
+            full_text,
+            re.IGNORECASE,
+        )
+        if m_discount:
+            discount = clean_num(m_discount.group(1))
+
         # Grand total (handles dates in between e.g. 'Total Due By: November 12, 2021  213470')
-        m_tot = re.search(r"(?:TOTAL\s*DUE|GRAND\s*TOTAL|Grand\s*Total|Total\s*Due|TOTAL AMOUNT|AMOUNT DUE).*?(?:[A-Za-z]+\s+\d{1,2},?\s+\d{4})?\s*[€$£]?\s*([0-9,]+(?:\.[0-9]{1,2})?)", full_text, re.IGNORECASE)
+        m_tot = re.search(r"(?:BALANCE\s+DUE|TOTAL\s*DUE|GRAND\s*TOTAL|Grand\s*Total|Total\s*Due|TOTAL AMOUNT|AMOUNT DUE).*?(?:[A-Za-z]+\s+\d{1,2},?\s+\d{4})?\s*[€$£]?\s*([0-9,]+(?:\.[0-9]{1,2})?)", full_text, re.IGNORECASE)
         if m_tot:
             grand_total = clean_num(m_tot.group(1))
 
@@ -549,6 +557,48 @@ class DocumentExtractor:
                     line_total=clean_num(m[2])
                 ))
 
+        # Strategy E: invoices with an Item / Quantity / Rate / Amount header
+        # and line descriptions that wrap onto following lines.
+        if not items and re.search(r"\bitem\b.*\bquantity\b.*\brate\b.*\bamount\b", full_text, re.IGNORECASE):
+            row_pat = re.compile(
+                r"^(?P<description>.+?)\s+(?P<quantity>\d+(?:\.\d+)?)\s+"
+                r"\$?(?P<unit>[0-9][0-9,]*\.\d{2})\s+\$?(?P<total>[0-9][0-9,]*\.\d{2})$"
+            )
+            inside_items = False
+            for raw_line in full_text.splitlines():
+                line = raw_line.strip()
+                lower = line.lower()
+                if not inside_items:
+                    if re.search(r"\bitem\b.*\bquantity\b.*\brate\b.*\bamount\b", line, re.IGNORECASE):
+                        inside_items = True
+                    continue
+                if re.match(r"^(?:sub\s*-?\s*total|balance\s+due|total\b|grand\s+total|amount\s+due|notes?\s*:|terms\s*:)", lower):
+                    break
+                if not line:
+                    continue
+                row_match = row_pat.match(line)
+                if row_match:
+                    description = row_match.group("description").strip()
+                    sku_match = re.search(r"\b([A-Z0-9]+(?:-[A-Z0-9]+)+)\b", description)
+                    sku = sku_match.group(1) if sku_match else ""
+                    if sku:
+                        description = re.sub(rf"\b{re.escape(sku)}\b", "", description).strip(" ,-")
+                    items.append(LineItem(
+                        line_no=len(items) + 1,
+                        sku=sku,
+                        description=description,
+                        quantity=clean_num(row_match.group("quantity")),
+                        unit_price=clean_num(row_match.group("unit")),
+                        line_total=clean_num(row_match.group("total")),
+                    ))
+                elif items:
+                    sku_match = re.search(r"\b([A-Z0-9]+(?:-[A-Z0-9]+)+)\b", line)
+                    if sku_match and not items[-1].sku:
+                        items[-1].sku = sku_match.group(1)
+                    items[-1].description = f"{items[-1].description} {line}".strip()
+                    if sku_match:
+                        items[-1].description = re.sub(rf"\b{re.escape(sku_match.group(1))}\b", "", items[-1].description).strip(" ,-")
+
         # Auto-compute subtotal & total if not stated in text
         calculated_subtotal = round(sum(i.line_total for i in items), 2)
         if subtotal == 0.0 and calculated_subtotal > 0:
@@ -580,6 +630,7 @@ class DocumentExtractor:
                 subtotal=subtotal,
                 tax_amount=tax,
                 shipping_amount=shipping,
+                discount_amount=discount,
                 grand_total=grand_total
             ),
             notes="Extracted via DocFlow Advanced Layout Engine"
