@@ -79,7 +79,7 @@
                   {{ doc.data.document_number if doc.data and doc.data.document_number else doc.original_filename }}
                 </a>
               </div>
-              <span class="inline-flex items-center rounded-full border border-slate-200 bg-white px-2 py-1 text-[10px] font-medium text-slate-700">
+              <span class="inline-flex items-center rounded-full border px-2 py-1 text-[10px] font-medium {% if doc.status == 'REVIEW_REQUIRED' %}border-amber-300 bg-amber-50 text-amber-800{% elif doc.status == 'FAILED' %}border-red-200 bg-red-50 text-red-700{% else %}border-slate-200 bg-white text-slate-700{% endif %}">
                 {% if doc.status == 'VERIFIED' %}Ready{% elif doc.status == 'REVIEW_REQUIRED' %}Needs review{% elif doc.status == 'PROCESSING' %}Processing{% else %}Failed{% endif %}
               </span>
             </div>
@@ -98,6 +98,20 @@
                 {% endif %}
               </div>
             </div>
+
+            {% if doc.status == 'REVIEW_REQUIRED' or doc.status == 'FAILED' %}
+              {% set summary_fields = namespace(captured=[], missing=[]) %}
+              {% if doc.data and doc.data.vendor and doc.data.vendor.name %}{% set _ = summary_fields.captured.append('vendor') %}{% else %}{% set _ = summary_fields.missing.append('vendor') %}{% endif %}
+              {% if doc.data and doc.data.document_number and doc.data.document_number|upper not in ['N/A', 'UNKNOWN'] %}{% set _ = summary_fields.captured.append('document number') %}{% else %}{% set _ = summary_fields.missing.append('document number') %}{% endif %}
+              {% if doc.data and doc.data.document_date and doc.data.document_date|upper not in ['N/A', 'UNKNOWN'] %}{% set _ = summary_fields.captured.append('date') %}{% else %}{% set _ = summary_fields.missing.append('date') %}{% endif %}
+              {% if doc.data and doc.data.line_items %}{% set _ = summary_fields.captured.append('line items (' ~ doc.data.line_items|length ~ ')') %}{% else %}{% set _ = summary_fields.missing.append('line items') %}{% endif %}
+              {% if doc.data and doc.data.summary and doc.data.summary.grand_total %}{% set _ = summary_fields.captured.append('total') %}{% else %}{% set _ = summary_fields.missing.append('total') %}{% endif %}
+              <div class="mt-4 rounded-lg border px-3 py-2.5 text-[11px] leading-5 {% if doc.status == 'FAILED' %}border-red-200 bg-red-50 text-red-900{% else %}border-amber-300 bg-amber-50 text-amber-900{% endif %}">
+                <p class="font-semibold">{% if doc.status == 'FAILED' %}No usable extraction{% else %}Review extraction{% endif %}</p>
+                <p><span class="font-medium">Captured:</span> {{ summary_fields.captured|join(', ') if summary_fields.captured else 'nothing recognized' }}</p>
+                <p><span class="font-medium">Missing:</span> {{ summary_fields.missing|join(', ') if summary_fields.missing else 'none of these fields' }}</p>
+              </div>
+            {% endif %}
 
             <div class="mt-4 flex items-center justify-end gap-2">
               <a href="/documents/{{ doc.id }}" class="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100">

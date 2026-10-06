@@ -51,7 +51,16 @@ class DocumentValidator:
         calculated_subtotal = round_cents(calculated_subtotal)
         stated_subtotal = round_cents(doc.summary.subtotal)
 
-        if line_item_math_errors > 0:
+        if not doc.line_items:
+            checks.append(ValidationCheck(
+                name="Line Items Arithmetic",
+                passed=False,
+                applicable=False,
+                expected=0.0,
+                actual=0.0,
+                message="Not checked because no line items were extracted."
+            ))
+        elif line_item_math_errors > 0:
             checks.append(ValidationCheck(
                 name="Line Items Arithmetic",
                 passed=False,
@@ -70,13 +79,20 @@ class DocumentValidator:
             ))
 
         # 2. Subtotal Cross-Check (Sum of line items vs Stated Subtotal)
-        # If stated_subtotal is 0 but we have line items, populate it
-        if stated_subtotal == 0.0 and calculated_subtotal > 0:
-            stated_subtotal = calculated_subtotal
-            doc.summary.subtotal = calculated_subtotal
-
         subtotal_diff = abs(calculated_subtotal - stated_subtotal)
-        if subtotal_diff <= 0.05:
+        if stated_subtotal == 0.0:
+            flags.append("Missing or unreadable subtotal.")
+            confidence -= 0.1
+        if not doc.line_items or stated_subtotal == 0.0:
+            checks.append(ValidationCheck(
+                name="Subtotal Consistency",
+                passed=False,
+                applicable=False,
+                expected=calculated_subtotal,
+                actual=stated_subtotal,
+                message="Not checked because line items or a stated subtotal are missing."
+            ))
+        elif subtotal_diff <= 0.05:
             checks.append(ValidationCheck(
                 name="Subtotal Consistency",
                 passed=True,
@@ -101,15 +117,34 @@ class DocumentValidator:
         shipping = round_cents(doc.summary.shipping_amount)
         discount = round_cents(doc.summary.discount_amount)
         stated_total = round_cents(doc.summary.grand_total)
+        has_extracted_content = bool(
+            doc.document_number or doc.document_date or doc.vendor.name or doc.buyer.company
+            or doc.line_items or stated_subtotal or stated_total
+        )
 
-        expected_grand_total = round_cents(stated_subtotal + tax + shipping - discount)
+        checks.append(ValidationCheck(
+            name="Invoice data detected",
+            passed=has_extracted_content,
+            expected=1.0,
+            actual=1.0 if has_extracted_content else 0.0,
+            message="Invoice details were extracted." if has_extracted_content else "No invoice details were recognized in this file."
+        ))
 
-        if stated_total == 0.0 and expected_grand_total > 0:
-            stated_total = expected_grand_total
-            doc.summary.grand_total = expected_grand_total
-
+        subtotal_for_total = stated_subtotal if stated_subtotal != 0.0 else calculated_subtotal
+        expected_grand_total = round_cents(subtotal_for_total + tax + shipping - discount)
         total_diff = abs(expected_grand_total - stated_total)
-        if total_diff <= 0.05:
+        if stated_total == 0.0:
+            flags.append("Missing or unreadable grand total.")
+            confidence -= 0.1
+            checks.append(ValidationCheck(
+                name="Grand Total Balance",
+                passed=False,
+                applicable=False,
+                expected=expected_grand_total,
+                actual=stated_total,
+                message="Not checked because no stated grand total was extracted."
+            ))
+        elif total_diff <= 0.05:
             checks.append(ValidationCheck(
                 name="Grand Total Balance",
                 passed=True,
@@ -144,9 +179,14 @@ class DocumentValidator:
         confidence = max(0.0, min(1.0, round(confidence, 2)))
 
         # Status determination
-        has_failed_critical_check = any(not c.passed for c in checks) or (not doc.line_items)
+        has_failed_critical_check = (
+            any(not c.passed and c.applicable for c in checks)
+            or not doc.line_items
+            or stated_subtotal == 0.0
+            or stated_total == 0.0
+        )
         
-        if not doc.line_items and stated_total == 0:
+        if not has_extracted_content:
             status = DocumentStatus.FAILED
         elif has_failed_critical_check or confidence < 0.90:
             status = DocumentStatus.REVIEW_REQUIRED

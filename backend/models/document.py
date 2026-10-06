@@ -52,6 +52,7 @@ class FinancialSummary(BaseModel):
 class ValidationCheck(BaseModel):
     name: str
     passed: bool
+    applicable: bool = True
     expected: float
     actual: float
     message: str
@@ -74,6 +75,10 @@ class ParsedDocumentData(BaseModel):
     line_items: List[LineItem] = Field(default_factory=list)
     summary: FinancialSummary = Field(default_factory=FinancialSummary)
     verification: Optional[VerificationResult] = None
+    extraction_provider: Optional[str] = None
+    extraction_model: Optional[str] = None
+    extraction_fallback: bool = False
+    extraction_requested_provider: Optional[str] = None
     notes: Optional[str] = None
 
 class DocumentResponse(BaseModel):

@@ -106,6 +106,17 @@ class DocumentExtractor:
             else:
                 provider = "heuristic"
 
+        requested_provider = provider
+        model_by_provider = {
+            "gemini": gemini_model,
+            "openai": openai_model,
+            "mistral": mistral_model,
+            "openrouter": account_settings.get("openrouter_model") or "google/gemini-2.5-flash",
+            "heuristic": "pdfplumber layout parser",
+        }
+        used_provider = {"gemini": "Google Gemini", "openai": "OpenAI", "mistral": "Mistral", "openrouter": "OpenRouter", "heuristic": "Local parser"}.get(provider, provider)
+        used_model = model_by_provider.get(provider, "")
+        extraction_fallback = False
         parsed_data = None
         if provider == "gemini" and gemini_api_key:
             try:
@@ -113,18 +124,21 @@ class DocumentExtractor:
             except Exception as e:
                 print(f"[Extractor] Gemini extraction failed, falling back to layout parser: {e}")
                 parsed_data = await cls._extract_smart_layout(file_path)
+                used_provider, used_model, extraction_fallback = "Local parser", "pdfplumber layout parser", True
         elif provider == "openai" and openai_api_key:
             try:
                 parsed_data = await cls._extract_with_openai(file_path, mime_type, openai_api_key, openai_model)
             except Exception as e:
                 print(f"[Extractor] OpenAI extraction failed, falling back to layout parser: {e}")
                 parsed_data = await cls._extract_smart_layout(file_path)
+                used_provider, used_model, extraction_fallback = "Local parser", "pdfplumber layout parser", True
         elif provider == "mistral" and mistral_api_key:
             try:
                 parsed_data = await cls._extract_with_compatible_vision(file_path, mime_type, mistral_api_key, "https://api.mistral.ai/v1/chat/completions", mistral_model)
             except Exception as e:
                 print(f"[Extractor] Mistral extraction failed, falling back to layout parser: {e}")
                 parsed_data = await cls._extract_smart_layout(file_path)
+                used_provider, used_model, extraction_fallback = "Local parser", "pdfplumber layout parser", True
         elif provider == "openrouter" and openrouter_api_key:
             try:
                 model = account_settings.get("openrouter_model") or "google/gemini-2.5-flash"
@@ -132,9 +146,18 @@ class DocumentExtractor:
             except Exception as e:
                 print(f"[Extractor] OpenRouter extraction failed, falling back to layout parser: {e}")
                 parsed_data = await cls._extract_smart_layout(file_path)
+                used_provider, used_model, extraction_fallback = "Local parser", "pdfplumber layout parser", True
         else:
             parsed_data = await cls._extract_smart_layout(file_path)
+            if provider != "heuristic":
+                extraction_fallback = True
+                used_provider, used_model = "Local parser", "pdfplumber layout parser"
 
+        parsed_data.extraction_provider = used_provider
+        if not parsed_data.extraction_model:
+            parsed_data.extraction_model = used_model
+        parsed_data.extraction_fallback = extraction_fallback
+        parsed_data.extraction_requested_provider = requested_provider
         # Always run math validation check on the extracted data
         DocumentValidator.validate(parsed_data)
         return parsed_data
@@ -183,7 +206,9 @@ class DocumentExtractor:
                     data = resp.json()
                     text_content = data["candidates"][0]["content"]["parts"][0]["text"]
                     parsed_dict = json.loads(text_content)
-                    return cls._parse_ai_result(parsed_dict)
+                    parsed_data = cls._parse_ai_result(parsed_dict)
+                    parsed_data.extraction_model = data.get("modelVersion") or model_name
+                    return parsed_data
             except Exception as e:
                 last_error = e
                 continue
@@ -233,7 +258,9 @@ class DocumentExtractor:
 
         text_content = data["choices"][0]["message"]["content"]
         parsed_dict = json.loads(text_content)
-        return cls._parse_ai_result(parsed_dict)
+        parsed_data = cls._parse_ai_result(parsed_dict)
+        parsed_data.extraction_model = data.get("model") or model
+        return parsed_data
 
     @staticmethod
     def _parse_ai_result(parsed_dict: Dict[str, Any]) -> ParsedDocumentData:

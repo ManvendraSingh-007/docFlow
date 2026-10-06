@@ -106,22 +106,31 @@
             <span class="material-symbols-outlined" style="font-size:16px;">balance</span>
             Totals check
           </h2>
-          <span class="text-xs text-slate-400">Tolerance: $0.02</span>
+          <span class="text-xs text-slate-500">Line items ±$0.02 · balance ±$0.05</span>
         </div>
+
+        {% if doc.data and doc.data.extraction_provider %}
+          <div class="mb-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+            <span class="font-semibold text-slate-800">Extraction:</span> {{ doc.data.extraction_provider }}{% if doc.data.extraction_model %} · {{ doc.data.extraction_model }}{% endif %}
+            {% if doc.data.extraction_fallback %}<span class="ml-1 text-amber-800">(fallback after {% if doc.data.extraction_requested_provider == 'openrouter' %}OpenRouter{% elif doc.data.extraction_requested_provider == 'gemini' %}Gemini{% else %}{{ doc.data.extraction_requested_provider|title }}{% endif %})</span>{% endif %}
+          </div>
+        {% else %}
+          <p class="mb-4 text-xs text-slate-500">Provider and model were not recorded for this older document.</p>
+        {% endif %}
 
         <div class="space-y-3">
           {% if doc.data and doc.data.verification and doc.data.verification.checks %}
             {% for check in doc.data.verification.checks %}
               <div class="flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-slate-700">
                 <div class="mt-0.5">
-                  {% if check.passed %}<span class="material-symbols-outlined" style="font-size:18px;">check_circle</span>{% else %}<span class="material-symbols-outlined" style="font-size:18px;">warning</span>{% endif %}
+                  {% if not check.applicable %}<span class="material-symbols-outlined text-amber-700" style="font-size:18px;">help</span>{% elif check.passed %}<span class="material-symbols-outlined text-emerald-700" style="font-size:18px;">check_circle</span>{% else %}<span class="material-symbols-outlined text-red-700" style="font-size:18px;">warning</span>{% endif %}
                 </div>
                 <div class="flex-1 text-xs">
                   <div class="font-semibold">{{ check.name }}</div>
                   <p class="mt-0.5">{{ check.message }}</p>
                 </div>
                 <div class="text-right text-[11px] font-bold font-mono text-slate-700">
-                  {% if check.passed %}MATCH{% else %}DIFF{% endif %}
+                  {% if not check.applicable %}NOT CHECKED{% elif check.passed %}MATCH{% else %}DIFF{% endif %}
                 </div>
               </div>
             {% endfor %}
