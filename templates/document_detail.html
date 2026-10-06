@@ -184,6 +184,32 @@
         </div>
       </div>
 
+      {% if doc.data and (doc.data.notes or doc.data.additional_details) %}
+        <section class="card-shell p-5" aria-labelledby="extraDetailsHeading">
+          <h2 id="extraDetailsHeading" class="mb-3 text-sm font-bold uppercase tracking-[0.12em] text-slate-700">Other document details</h2>
+          {% if doc.data.notes %}<p class="mb-3 whitespace-pre-wrap text-sm leading-6 text-slate-700">{{ doc.data.notes }}</p>{% endif %}
+          {% if doc.data.additional_details %}
+            <dl class="grid gap-2 sm:grid-cols-2">
+              {% for detail in doc.data.additional_details %}
+                <div class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                  <dt class="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{{ detail.label }}</dt>
+                  <dd class="mt-1 whitespace-pre-wrap break-words text-sm text-slate-800">{{ detail.value }}</dd>
+                </div>
+              {% endfor %}
+            </dl>
+          {% endif %}
+        </section>
+      {% endif %}
+
+      {% if extracted_text %}
+        <details class="card-shell group overflow-hidden">
+          <summary class="cursor-pointer list-none px-5 py-4 text-sm font-semibold text-slate-700 marker:content-none">
+            <span class="inline-flex items-center gap-2"><span class="material-symbols-outlined text-slate-500" style="font-size:18px">subject</span>Text read from the document<span class="text-xs font-normal text-slate-500">(for checking details)</span></span>
+          </summary>
+          <pre class="max-h-[32rem] overflow-auto border-t border-slate-200 bg-slate-50 p-4 text-xs leading-5 text-slate-700 whitespace-pre-wrap">{{ extracted_text }}</pre>
+        </details>
+      {% endif %}
+
       <div id="documentEditor" class="card-shell p-5">
         <div class="mb-4 flex items-center justify-between border-b border-slate-100 pb-3">
           <h2 class="text-sm font-bold uppercase tracking-[0.12em] text-slate-700">Document metadata & parties</h2>
@@ -438,6 +464,7 @@ async function saveAndRevalidate() {
     extraction_fallback: Boolean(parsedDoc.extraction_fallback),
     extraction_requested_provider: parsedDoc.extraction_requested_provider || null,
     notes: parsedDoc.notes || null,
+    additional_details: parsedDoc.additional_details || [],
     summary: {
       currency: documentCurrency,
       subtotal: parseFloat(document.getElementById("subtotalInput").value) || 0,

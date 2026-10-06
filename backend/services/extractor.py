@@ -19,6 +19,7 @@ from backend.services.validator import DocumentValidator
 SYSTEM_PROMPT = """You are a high-precision B2B document extraction engine.
 Extract all structured data from this Purchase Order, Invoice, or Delivery Slip.
 Ensure exact arithmetic: extract line item descriptions, SKUs, quantities, unit prices, line totals, subtotal, taxes, shipping, discounts, and grand total.
+Also preserve notes, references, delivery instructions, contacts, dates, addresses, and every other labeled field in notes or additional_details when it has no matching field above. Do not silently omit visible information.
 Never invent missing values. Return null for unknown scalar fields, an empty string for an unknown description, and an empty array when no line items are visible.
 Preserve the currency shown on the document. Do not use the example values in the schema as extracted data.
 Always return strictly valid JSON conforming to the requested schema. Do not include markdown ticks or commentary outside JSON.
@@ -63,7 +64,10 @@ EXTRACTION_SCHEMA = {
         "discount_amount": None,
         "grand_total": None
     },
-    "notes": None
+    "notes": None,
+    "additional_details": [
+        {"label": "Other document field", "value": "Captured text or value not represented above"}
+    ]
 }
 
 def clean_num(val) -> float:
@@ -154,6 +158,17 @@ class DocumentExtractor:
             if provider != "heuristic":
                 extraction_fallback = True
                 used_provider, used_model = "Local parser", "pdfplumber layout parser"
+
+        # Keep the readable PDF text alongside vision extraction too. It provides
+        # an audit trail for details that do not fit the structured invoice fields.
+        if not extraction_fallback and provider in {"gemini", "openai", "mistral", "openrouter"}:
+            try:
+                text_data = await cls._extract_smart_layout(file_path)
+                parsed_data.source_text = text_data.source_text
+                if not parsed_data.additional_details and text_data.additional_details:
+                    parsed_data.additional_details = text_data.additional_details
+            except Exception as exc:
+                print(f"[Extractor] Could not retain document text layer: {exc}")
 
         parsed_data.extraction_provider = used_provider
         if not parsed_data.extraction_model:
@@ -267,6 +282,8 @@ class DocumentExtractor:
     @staticmethod
     def _parse_ai_result(parsed_dict: Dict[str, Any]) -> ParsedDocumentData:
         normalized = dict(parsed_dict)
+        if normalized.get("additional_details") is None:
+            normalized["additional_details"] = []
         summary = normalized.get("summary")
         if summary is None:
             summary = {}
@@ -410,6 +427,16 @@ class DocumentExtractor:
                 break
         if not doc_date:
             doc_date = None
+
+        due_date = None
+        due_date_match = re.search(
+            r"(?:DUE\s+DATE|PAYMENT\s+DUE|DUE\s+BY)[:\s]*([0-9]{1,2}[./-][0-9]{1,2}[./-][0-9]{2,4}|[A-Za-z]+\s+\d{1,2},?\s+\d{4}|\d{4}[./-]\d{1,2}[./-]\d{1,2})",
+            full_text, re.IGNORECASE,
+        )
+        if due_date_match:
+            due_date = due_date_match.group(1).strip()
+        terms_match = re.search(r"(?:PAYMENT\s+)?TERMS?\s*[:#]?\s*([^\n]+)", full_text, re.IGNORECASE)
+        payment_terms = terms_match.group(1).strip() if terms_match else None
 
         # 5. Vendor Details Extraction
         vendor_name = None
@@ -687,11 +714,39 @@ class DocumentExtractor:
         if grand_total == 0.0 and subtotal > 0:
             grand_total = round(subtotal + tax + shipping, 2)
 
+        # Retain labeled fields that do not fit the standard invoice form.
+        known_labels = {
+            "invoice", "invoice number", "invoice #", "document number", "po number", "order number",
+            "date", "invoice date", "order date", "due date", "payment due", "due by", "terms", "payment terms",
+            "subtotal", "sub-total", "tax", "sales tax", "vat", "shipping", "freight", "discount",
+            "total", "grand total", "total due", "amount due", "balance due", "vendor", "supplier",
+            "bill to", "ship to", "to", "from", "email", "phone", "tel", "fax", "tax id", "vat id",
+            "description", "item", "quantity", "qty", "rate", "amount", "unit price",
+        }
+        additional_details = []
+        seen_details = set()
+        for raw_line in full_text.splitlines():
+            match = re.match(r"^\s*([A-Za-z][A-Za-z0-9 /#()._-]{1,60})\s*:\s*(.+?)\s*$", raw_line)
+            if not match:
+                continue
+            label, value = match.group(1).strip(), match.group(2).strip()
+            normalized_label = re.sub(r"\s+", " ", label.lower()).strip()
+            key = (normalized_label, value.lower())
+            if normalized_label in known_labels or key in seen_details:
+                continue
+            seen_details.add(key)
+            additional_details.append({"label": label, "value": value})
+        extracted_notes = None
+        notes_match = re.search(r"(?:^|\n)\s*notes?\s*:\s*(.+)", full_text, re.IGNORECASE)
+        if notes_match:
+            extracted_notes = notes_match.group(1).strip()
+
         return ParsedDocumentData(
             document_type=doc_type,
             document_number=doc_number,
             document_date=doc_date,
-            payment_terms="Net 30 Days",
+            due_date=due_date,
+            payment_terms=payment_terms,
             vendor=VendorInfo(
                 name=vendor_name,
                 tax_id=tax_id,
@@ -714,6 +769,8 @@ class DocumentExtractor:
                 discount_amount=discount,
                 grand_total=grand_total
             ),
-            notes="Extracted via DocFlow Advanced Layout Engine"
+            notes=extracted_notes,
+            additional_details=additional_details,
+            source_text=(full_text[:199900] + "\n[Text clipped at 200,000 characters.]" if len(full_text) > 200000 else full_text),
         )
 __all__ = ["DocumentExtractor", "clean_num"]

@@ -99,6 +99,7 @@ async def document_detail_view(request: Request, doc_id: str):
         "document_detail.html",
         {
             "doc": doc,
+            "extracted_text": DocumentRepository.get_source_text(doc_id),
             "app_name": settings.app_name,
             "settings": settings,
             "current_user": user,

@@ -49,6 +49,10 @@ class FinancialSummary(BaseModel):
     discount_amount: float = 0.0
     grand_total: float = 0.0
 
+class AdditionalDetail(BaseModel):
+    label: str
+    value: str
+
 class ValidationCheck(BaseModel):
     name: str
     passed: bool
@@ -80,6 +84,9 @@ class ParsedDocumentData(BaseModel):
     extraction_fallback: bool = False
     extraction_requested_provider: Optional[str] = None
     notes: Optional[str] = None
+    additional_details: List[AdditionalDetail] = Field(default_factory=list)
+    # Kept out of parsed_json/API list responses; persisted separately for inspection.
+    source_text: Optional[str] = Field(default=None, exclude=True)
 
 class DocumentResponse(BaseModel):
     id: str
