@@ -167,7 +167,7 @@
 
           {% if doc.data and doc.data.verification and doc.data.verification.flags %}
             <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
-              <span class="mb-1 block text-[11px] font-bold uppercase tracking-[0.12em] text-slate-700">Human review notes</span>
+              <span class="mb-1 block text-[11px] font-bold uppercase tracking-[0.12em] text-slate-700">Please check</span>
               <ul class="list-disc space-y-1 pl-5 text-xs text-slate-600">
                 {% for flag in doc.data.verification.flags %}
                   <li>{{ flag }}</li>
@@ -246,8 +246,8 @@
                     <td class="px-2 py-1.5"><input type="text" class="desc-input w-full rounded border border-transparent p-1 text-xs text-slate-900 hover:border-slate-300 focus:border-slate-500 focus:outline-none" value="{{ item.description }}"></td>
                     <td class="px-2 py-1.5 text-right"><input type="number" step="any" oninput="recalcRow(this)" class="qty-input w-16 rounded border border-transparent p-1 text-right text-xs text-slate-900 hover:border-slate-300 focus:border-slate-500 focus:outline-none" value="{{ item.quantity }}"></td>
                     <td class="px-2 py-1.5 text-right"><input type="number" step="0.01" oninput="recalcRow(this)" class="price-input w-20 rounded border border-transparent p-1 text-right text-xs text-slate-900 hover:border-slate-300 focus:border-slate-500 focus:outline-none" value="{{ '%.2f'|format(item.unit_price) }}"></td>
-                    <td class="total-cell px-2 py-1.5 text-right font-semibold text-slate-800">{{ item.total }}</td>
-                    <td class="px-2 py-1.5 text-center"><button class="remove-row-btn text-slate-400 hover:text-slate-700" type="button"><span class="material-symbols-outlined" style="font-size:16px;">close</span></button></td>
+                    <td class="total-cell px-2 py-1.5 text-right font-semibold text-slate-800">{{ "%.2f"|format(item.line_total or 0) }}</td>
+                    <td class="px-2 py-1.5 text-center"><button onclick="removeLineItem(this)" class="remove-row-btn text-slate-400 hover:text-slate-700" type="button" aria-label="Remove line item"><span class="material-symbols-outlined" style="font-size:16px;">close</span></button></td>
                   </tr>
                   {% endfor %}
                 {% endif %}
@@ -262,7 +262,7 @@
               <span>Subtotal:</span>
               <div class="flex items-center font-mono">
                 <span>{{ doc.data.summary.currency if doc.data and doc.data.summary else 'USD' }}</span>
-                <input type="number" step="0.01" id="subtotalInput" class="w-24 text-right p-1 border border-slate-300 rounded font-semibold" value="{{ '%.2f'|format(doc.data.summary.subtotal) if doc.data and doc.data.summary else '0.00' }}">
+                <input type="number" step="0.01" id="subtotalInput" oninput="recalcGrandTotal()" class="w-24 text-right p-1 border border-slate-300 rounded font-semibold" value="{{ '%.2f'|format(doc.data.summary.subtotal) if doc.data and doc.data.summary else '0.00' }}">
               </div>
             </div>
 
@@ -369,26 +369,37 @@ async function saveAndRevalidate() {
       description: row.querySelector(".desc-input").value,
       quantity: parseFloat(row.querySelector(".qty-input").value) || 0,
       unit_price: parseFloat(row.querySelector(".price-input").value) || 0,
-      line_total: parseFloat(row.querySelector(".total-cell").textContent) || 0
+      line_total: parseFloat(row.querySelector(".total-cell").textContent) || 0,
+      tax_rate: parsedDoc.line_items?.[idx]?.tax_rate ?? null
     });
   });
 
   const payload = {
-    document_type: "PURCHASE_ORDER",
+    document_type: parsedDoc.document_type || "PURCHASE_ORDER",
     document_number: document.getElementById("docNumber").value,
     document_date: document.getElementById("docDate").value,
+    due_date: parsedDoc.due_date || null,
     payment_terms: document.getElementById("paymentTerms").value,
     vendor: {
       name: document.getElementById("vendorName").value,
       tax_id: document.getElementById("vendorTaxId").value,
-      address: document.getElementById("vendorAddress").value
+      address: document.getElementById("vendorAddress").value,
+      email: parsedDoc.vendor?.email || null,
+      phone: parsedDoc.vendor?.phone || null
     },
     buyer: {
       company: document.getElementById("buyerCompany").value,
       name: document.getElementById("buyerContact").value,
-      shipping_address: document.getElementById("shippingAddress").value
+      shipping_address: document.getElementById("shippingAddress").value,
+      email: parsedDoc.buyer?.email || null,
+      billing_address: parsedDoc.buyer?.billing_address || null
     },
     line_items: items,
+    extraction_provider: parsedDoc.extraction_provider || null,
+    extraction_model: parsedDoc.extraction_model || null,
+    extraction_fallback: Boolean(parsedDoc.extraction_fallback),
+    extraction_requested_provider: parsedDoc.extraction_requested_provider || null,
+    notes: parsedDoc.notes || null,
     summary: {
       currency: documentCurrency,
       subtotal: parseFloat(document.getElementById("subtotalInput").value) || 0,
