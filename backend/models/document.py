@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
 from datetime import datetime
 from enum import Enum
@@ -93,6 +93,7 @@ class ParsedDocumentData(BaseModel):
     notes: Optional[str] = None
     additional_details: List[AdditionalDetail] = Field(default_factory=list)
     extracted_tables: List[ExtractedTable] = Field(default_factory=list)
+    document_data: Dict[str, Any] = Field(default_factory=dict)
     # Kept out of parsed_json/API list responses; persisted separately for inspection.
     source_text: Optional[str] = Field(default=None, exclude=True)
 

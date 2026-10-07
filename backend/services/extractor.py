@@ -16,47 +16,27 @@ from backend.models.document import (
 )
 from backend.services.validator import DocumentValidator
 
-SYSTEM_PROMPT = """You are a multimodal business-document extraction engine. Inspect every page of the supplied document visually and read its printed text and tables. Documents may use unfamiliar layouts, regional tax rules, abbreviations, or product-specific columns.
+SYSTEM_PROMPT = """You are a multimodal document analyst. Inspect every page of the supplied document visually, including layout, printed text, stamps, and tables. The document may be an invoice, purchase order, receipt, medical bill, customs form, or another kind of business document.
 
-Capture every visible meaningful field and every table column and row. Preserve document-specific fields such as GST/VAT, HSN/SAC, rate, discount, MRP, batch/lot, manufacture or expiry date, unit, pack size, scheme, tax split, and product identifiers. Return table headings and cell values in extracted_tables, keeping each value on its original row. Return labeled values outside tables in additional_details, grouped by section when useful. Include standard normalized fields too when the document supports them. Do not force unfamiliar values into an incorrect standard field, and do not omit them just because they are absent from the standard schema.
+Design the data structure from the document itself. Group its fields into meaningful sections using the document's own concepts. Create a separate table for each distinct table in the document. Each table must have columns based on the printed headings and one row per source row. Include every visible meaningful field and cell, including unfamiliar regional or product fields such as GST, HSN/SAC, rate, discount, MRP, batch/lot, manufacture/expiry, pack size, and split taxes. Do not force the document into a predefined invoice layout or omit a field because it has no standard counterpart.
 
-Preserve labels, units, currencies, signs, and date text as printed. Never invent missing values or calculate a value the document does not state. Leave unknown standard scalar fields null and use empty arrays when there is no corresponding data. Capture notes, references, delivery instructions, contacts, addresses, and footers when meaningful. Return only valid JSON matching the requested structure; no markdown or commentary.
+For each field and table column, include an optional role when confidently recognized. Roles are metadata used only for arithmetic checks: document_number, document_date, due_date, payment_terms, vendor_name, vendor_tax_id, buyer_name, buyer_company, currency, sku, description, quantity, unit_price, tax_rate, line_total, subtotal, tax_amount, shipping_amount, discount_amount, grand_total. Use role `other` or omit role for anything else. Keep all original labels and values regardless of role.
+
+Preserve printed labels, units, currencies, signs, and date text. Never invent a value or calculate a value the source does not state. Put values into scalar JSON strings or numbers. Keep table cells aligned to their declared columns. Capture useful notes, references, delivery instructions, contacts, addresses, and footers in sections or notes. Return only valid JSON matching the requested structure; no markdown or commentary.
 """
 
 EXTRACTION_SCHEMA = {
-    "document_type": "INVOICE or PURCHASE_ORDER",
-    "document_number": None,
-    "document_date": None,
-    "due_date": None,
-    "payment_terms": None,
-    "vendor": {
-        "name": None,
-        "tax_id": None,
-        "email": None,
-        "phone": None,
-        "address": None
-    },
-    "buyer": {
-        "name": None,
-        "company": None,
-        "email": None,
-        "billing_address": None,
-        "shipping_address": None
-    },
-    "line_items": [],
-    "summary": {
-        "currency": None,
-        "subtotal": None,
-        "tax_amount": None,
-        "shipping_amount": None,
-        "discount_amount": None,
-        "grand_total": None
-    },
-    "notes": None,
-    "additional_details": [],
-    "extracted_tables": [
-        {"title": "Table title", "columns": ["Printed heading"], "rows": [["Printed cell value"]]}
-    ]
+    "document_type": "Use the source document's type",
+    "document_data": {
+        "title": "A concise title based on the source",
+        "sections": [
+            {"title": "Section title from the document", "fields": [{"label": "Printed field label", "value": "Printed value", "type": "text", "role": "other"}]}
+        ],
+        "tables": [
+            {"title": "Table title", "columns": [{"key": "column_key", "label": "Printed column heading", "type": "text", "role": "other"}], "rows": [["Cell value"]]}
+        ],
+        "notes": []
+    }
 }
 
 def clean_num(val) -> float:
@@ -103,6 +83,11 @@ class DocumentExtractor:
                 raise RuntimeError("No AI provider key is configured. Add a provider key in Extraction settings before processing documents.")
 
         requested_provider = provider
+        source_text = ""
+        try:
+            source_text = await cls._extract_pdf_text(file_path)
+        except Exception as exc:
+            print(f"[Extractor] Could not read document text layer; continuing with page visuals: {exc}")
         model_by_provider = {
             "gemini": gemini_model,
             "openai": openai_model,
@@ -114,30 +99,26 @@ class DocumentExtractor:
         if provider == "gemini":
             if not gemini_api_key:
                 raise RuntimeError("No Google Gemini key is selected. Add or select a key in Extraction settings.")
-            parsed_data = await cls._extract_with_gemini(file_path, mime_type, gemini_api_key, gemini_model)
+            parsed_data = await cls._extract_with_gemini(file_path, mime_type, gemini_api_key, gemini_model, source_text)
         elif provider == "openai":
             if not openai_api_key:
                 raise RuntimeError("No OpenAI key is selected. Add or select a key in Extraction settings.")
-            parsed_data = await cls._extract_with_openai(file_path, mime_type, openai_api_key, openai_model)
+            parsed_data = await cls._extract_with_openai(file_path, mime_type, openai_api_key, openai_model, source_text)
         elif provider == "mistral":
             if not mistral_api_key:
                 raise RuntimeError("No Mistral key is selected. Add or select a key in Extraction settings.")
-            parsed_data = await cls._extract_with_compatible_vision(file_path, mime_type, mistral_api_key, "https://api.mistral.ai/v1/chat/completions", mistral_model)
+            parsed_data = await cls._extract_with_compatible_vision(file_path, mime_type, mistral_api_key, "https://api.mistral.ai/v1/chat/completions", mistral_model, source_text)
         elif provider == "openrouter":
             if not openrouter_api_key:
                 raise RuntimeError("No OpenRouter key is selected. Add or select a key in Extraction settings.")
             model = credentials.get("openrouter", {}).get("model") or account_settings.get("openrouter_model") or "google/gemini-2.5-flash"
-            parsed_data = await cls._extract_with_compatible_vision(file_path, mime_type, openrouter_api_key, "https://openrouter.ai/api/v1/chat/completions", model)
+            parsed_data = await cls._extract_with_compatible_vision(file_path, mime_type, openrouter_api_key, "https://openrouter.ai/api/v1/chat/completions", model, source_text)
         else:
             raise ValueError(f"Unsupported AI extraction provider: {provider}")
 
         # Keep the readable PDF text alongside vision extraction too. It provides
         # an audit trail for details that do not fit the structured invoice fields.
-        if provider in {"gemini", "openai", "mistral", "openrouter"}:
-            try:
-                parsed_data.source_text = await cls._extract_pdf_text(file_path)
-            except Exception as exc:
-                print(f"[Extractor] Could not retain document text layer: {exc}")
+        parsed_data.source_text = source_text or None
 
         parsed_data.extraction_provider = used_provider
         if not parsed_data.extraction_model:
@@ -150,7 +131,7 @@ class DocumentExtractor:
         return parsed_data
 
     @classmethod
-    async def _extract_with_gemini(cls, file_path: Path, mime_type: str, api_key: Optional[str] = None, model_name: str = "gemini-3.1-flash-lite") -> ParsedDocumentData:
+    async def _extract_with_gemini(cls, file_path: Path, mime_type: str, api_key: Optional[str] = None, model_name: str = "gemini-3.1-flash-lite", source_text: str = "") -> ParsedDocumentData:
         import base64
         api_key = api_key or settings.gemini_api_key
         with open(file_path, "rb") as f:
@@ -158,8 +139,9 @@ class DocumentExtractor:
 
         prompt = (
             f"{SYSTEM_PROMPT}\n"
-            f"Here is the expected JSON structure:\n{json.dumps(EXTRACTION_SCHEMA, indent=2)}\n"
-            f"Extract all information accurately from the document and return only valid JSON."
+            + (f"Readable text layer from this same document (visual layout remains the reference for table grouping):\n{source_text}\n" if source_text else "")
+            + f"Response structure example (placeholder text is not document data):\n{json.dumps(EXTRACTION_SCHEMA, indent=2)}\n"
+            + "Return empty sections or tables only when the source contains no corresponding information. Extract all visible information and return only valid JSON."
         )
 
         models_to_try = [model_name]
@@ -219,16 +201,17 @@ class DocumentExtractor:
         raise last_error or Exception("Gemini extraction failed on all model endpoints")
 
     @classmethod
-    async def _extract_with_openai(cls, file_path: Path, mime_type: str, api_key: Optional[str] = None, model: str = "gpt-4o-mini") -> ParsedDocumentData:
-        return await cls._extract_with_compatible_vision(file_path, mime_type, api_key or settings.openai_api_key, "https://api.openai.com/v1/chat/completions", model)
+    async def _extract_with_openai(cls, file_path: Path, mime_type: str, api_key: Optional[str] = None, model: str = "gpt-4o-mini", source_text: str = "") -> ParsedDocumentData:
+        return await cls._extract_with_compatible_vision(file_path, mime_type, api_key or settings.openai_api_key, "https://api.openai.com/v1/chat/completions", model, source_text)
 
     @classmethod
-    async def _extract_with_compatible_vision(cls, file_path: Path, mime_type: str, api_key: str, endpoint: str, model: str) -> ParsedDocumentData:
+    async def _extract_with_compatible_vision(cls, file_path: Path, mime_type: str, api_key: str, endpoint: str, model: str, source_text: str = "") -> ParsedDocumentData:
         import base64
 
         prompt = (
             f"{SYSTEM_PROMPT}\n"
-            f"Extract all information accurately into this JSON schema:\n{json.dumps(EXTRACTION_SCHEMA, indent=2)}\n"
+            + (f"Readable text layer from this same document (visual layout remains the reference for table grouping):\n{source_text}\n" if source_text else "")
+            + f"Response structure example (placeholder text is not document data):\n{json.dumps(EXTRACTION_SCHEMA, indent=2)}\n"
         )
 
         content = [{"type": "text", "text": prompt}]
@@ -319,6 +302,14 @@ class DocumentExtractor:
 
     @staticmethod
     def _parse_ai_result(parsed_dict: Dict[str, Any]) -> ParsedDocumentData:
+        flexible_data = parsed_dict.get("document_data") or parsed_dict.get("data")
+        if not isinstance(flexible_data, dict) and any(key in parsed_dict for key in ("sections", "tables", "fields")):
+            flexible_data = {key: value for key, value in parsed_dict.items() if key not in {"document_type", "verification"}}
+        if isinstance(flexible_data, dict):
+            flexible_response = dict(parsed_dict)
+            flexible_response["document_data"] = flexible_data
+            return DocumentExtractor._parse_flexible_ai_result(flexible_response)
+
         normalized = dict(parsed_dict)
 
         def text_value(value, default=None):
@@ -459,6 +450,224 @@ class DocumentExtractor:
                 if paths:
                     raise ValueError("Model response has invalid fields: " + ", ".join(paths)) from exc
             raise
+
+    @staticmethod
+    def _parse_flexible_ai_result(response: Dict[str, Any]) -> ParsedDocumentData:
+        """Normalize the AI-designed sections and tables without imposing invoice columns."""
+        def label_text(value, fallback=""):
+            if value is None:
+                return fallback
+            if isinstance(value, (dict, list)):
+                return json.dumps(value, ensure_ascii=False)
+            return str(value).strip()
+
+        source = dict(response.get("document_data") or {})
+        sections = source.get("sections") or []
+        if not sections and source.get("fields"):
+            sections = [{"title": source.get("title") or "Document fields", "fields": source["fields"]}]
+        if isinstance(sections, dict):
+            sections = [{"title": title, "fields": fields} for title, fields in sections.items()]
+        normalized_sections = []
+        role_fields = {}
+        for section_index, section in enumerate(sections if isinstance(sections, list) else []):
+            if not isinstance(section, dict):
+                continue
+            raw_fields = section.get("fields") or []
+            if isinstance(raw_fields, dict):
+                raw_fields = [{"label": label, "value": value} for label, value in raw_fields.items()]
+            fields = []
+            for raw_field in raw_fields if isinstance(raw_fields, list) else []:
+                if not isinstance(raw_field, dict):
+                    continue
+                label = label_text(raw_field.get("label") or raw_field.get("name"), "Field")
+                value = raw_field.get("value", raw_field.get("text"))
+                if isinstance(value, (dict, list)):
+                    value = json.dumps(value, ensure_ascii=False)
+                role = label_text(raw_field.get("role")).lower()
+                field = {
+                    "label": label,
+                    "value": value,
+                    "type": label_text(raw_field.get("type"), "text").lower(),
+                }
+                if role:
+                    field["role"] = role
+                    role_fields.setdefault(role, value)
+                fields.append(field)
+            if fields:
+                normalized_sections.append({
+                    "title": label_text(section.get("title") or section.get("name"), f"Section {section_index + 1}"),
+                    "fields": fields,
+                })
+
+        extra_fields = []
+        known_keys = {"title", "document_title", "sections", "fields", "tables", "notes"}
+        def flatten_extra(label, value):
+            if isinstance(value, dict) and value:
+                for child_label, child_value in value.items():
+                    flatten_extra(f"{label} · {child_label}", child_value)
+            elif value is not None:
+                rendered = json.dumps(value, ensure_ascii=False) if isinstance(value, list) else value
+                value_type = "number" if isinstance(value, (int, float)) and not isinstance(value, bool) else "text"
+                extra_fields.append({"label": label, "value": rendered, "type": value_type, "role": "other"})
+        for key, value in source.items():
+            if key not in known_keys:
+                flatten_extra(label_text(key), value)
+        if extra_fields:
+            normalized_sections.append({"title": "Additional document data", "fields": extra_fields})
+
+        raw_tables = source.get("tables") or []
+        if isinstance(raw_tables, dict):
+            raw_tables = [raw_tables]
+        normalized_tables = []
+        for table_index, table in enumerate(raw_tables if isinstance(raw_tables, list) else []):
+            if not isinstance(table, dict):
+                continue
+            raw_columns = table.get("columns") or table.get("headers") or []
+            columns = []
+            for column_index, raw_column in enumerate(raw_columns if isinstance(raw_columns, list) else []):
+                if isinstance(raw_column, dict):
+                    column = {
+                        "key": label_text(raw_column.get("key") or raw_column.get("label") or raw_column.get("name"), f"column_{column_index + 1}"),
+                        "label": label_text(raw_column.get("label") or raw_column.get("name"), f"Column {column_index + 1}"),
+                        "type": label_text(raw_column.get("type"), "text").lower(),
+                    }
+                    role = label_text(raw_column.get("role")).lower()
+                    if role:
+                        column["role"] = role
+                else:
+                    label = label_text(raw_column, f"Column {column_index + 1}")
+                    column = {"key": label, "label": label, "type": "text"}
+                columns.append(column)
+            raw_rows = table.get("rows") or table.get("data") or []
+            rows = []
+            for raw_row in raw_rows if isinstance(raw_rows, list) else []:
+                if isinstance(raw_row, dict):
+                    rows.append([raw_row.get(column.get("key", ""), raw_row.get(column["label"])) for column in columns])
+                elif isinstance(raw_row, (list, tuple)):
+                    rows.append(list(raw_row))
+            width = max([len(columns), *(len(row) for row in rows)], default=len(columns))
+            while len(columns) < width:
+                columns.append({"label": f"Column {len(columns) + 1}", "type": "text"})
+            rows = [row + [None] * (width - len(row)) for row in rows]
+            rows = [[json.dumps(value, ensure_ascii=False) if isinstance(value, (dict, list)) else value for value in row] for row in rows]
+            if columns and rows:
+                normalized_tables.append({
+                    "title": label_text(table.get("title") or table.get("name"), f"Table {table_index + 1}"),
+                    "columns": columns,
+                    "rows": rows,
+                })
+
+        notes = source.get("notes") or []
+        if isinstance(notes, str):
+            notes = [notes] if notes.strip() else []
+        data = {
+            **source,
+            "title": label_text(source.get("title") or source.get("document_title"), "Document details"),
+            "sections": normalized_sections,
+            "tables": normalized_tables,
+            "notes": [label_text(note) for note in notes if note is not None],
+        }
+        document_type = label_text(response.get("document_type"), "DOCUMENT").upper()
+
+        def numeric_role(role):
+            value = role_fields.get(role)
+            return clean_num(value) if value not in (None, "") else 0.0
+
+        currency = label_text(role_fields.get("currency"), "UNKNOWN")
+        compatibility = {
+            "document_type": document_type,
+            "document_number": label_text(role_fields.get("document_number")) or None,
+            "document_date": label_text(role_fields.get("document_date")) or None,
+            "due_date": label_text(role_fields.get("due_date")) or None,
+            "payment_terms": label_text(role_fields.get("payment_terms")) or None,
+            "vendor": {
+                "name": label_text(role_fields.get("vendor_name")) or None,
+                "tax_id": label_text(role_fields.get("vendor_tax_id")) or None,
+            },
+            "buyer": {
+                "name": label_text(role_fields.get("buyer_name")) or None,
+                "company": label_text(role_fields.get("buyer_company")) or None,
+            },
+            "line_items": [],
+            "summary": {
+                "currency": currency,
+                "subtotal": numeric_role("subtotal"),
+                "tax_amount": numeric_role("tax_amount"),
+                "shipping_amount": numeric_role("shipping_amount"),
+                "discount_amount": numeric_role("discount_amount"),
+                "grand_total": numeric_role("grand_total"),
+            },
+            "notes": "\n".join(data["notes"]) or None,
+            "document_data": data,
+        }
+        parsed = ParsedDocumentData(**compatibility)
+        DocumentExtractor._apply_document_roles(parsed)
+        return parsed
+
+    @staticmethod
+    def _apply_document_roles(parsed: ParsedDocumentData) -> None:
+        """Refresh legacy arithmetic fields from the editable AI-designed JSON roles."""
+        parsed.document_number = None
+        parsed.document_date = None
+        parsed.due_date = None
+        parsed.payment_terms = None
+        parsed.vendor = VendorInfo()
+        parsed.buyer = BuyerInfo()
+        parsed.line_items = []
+        parsed.summary = FinancialSummary(currency="UNKNOWN")
+        data = parsed.document_data or {}
+        raw_notes = data.get("notes") or []
+        if isinstance(raw_notes, str):
+            raw_notes = [raw_notes]
+        parsed.notes = "\n".join(str(note) for note in raw_notes if note not in (None, "")) or None
+        fields = {}
+        for section in data.get("sections", []):
+            if not isinstance(section, dict):
+                continue
+            for field in section.get("fields", []):
+                if not isinstance(field, dict):
+                    continue
+                role = field.get("role")
+                if role:
+                    fields[role] = field.get("value")
+        role_values = {}
+        for table in data.get("tables", []):
+            if not isinstance(table, dict):
+                continue
+            columns = table.get("columns", [])
+            role_indexes = {column.get("role"): index for index, column in enumerate(columns) if isinstance(column, dict) and column.get("role")}
+            for row_index, row in enumerate(table.get("rows", [])):
+                if not isinstance(row, list):
+                    continue
+                values = {role: row[index] for role, index in role_indexes.items() if index < len(row)}
+                if "description" in role_indexes or ("quantity" in role_indexes and "line_total" in role_indexes):
+                    parsed.line_items.append(LineItem(
+                        line_no=row_index + 1,
+                        sku=str(values.get("sku") or ""),
+                        description=str(values.get("description") or ""),
+                        quantity=clean_num(values.get("quantity")),
+                        unit_price=clean_num(values.get("unit_price")),
+                        tax_rate=clean_num(values.get("tax_rate")),
+                        line_total=clean_num(values.get("line_total")),
+                    ))
+                for role in ("currency", "subtotal", "tax_amount", "shipping_amount", "discount_amount", "grand_total"):
+                    if role in values and values[role] not in (None, ""):
+                        role_values[role] = values[role]
+        fields.update(role_values)
+        for role, attr in (("document_number", "document_number"), ("document_date", "document_date"), ("due_date", "due_date"), ("payment_terms", "payment_terms")):
+            if fields.get(role) is not None:
+                setattr(parsed, attr, str(fields[role]))
+        for role, attr in (("vendor_name", "name"), ("vendor_tax_id", "tax_id")):
+            if fields.get(role) is not None:
+                setattr(parsed.vendor, attr, str(fields[role]))
+        for role, attr in (("buyer_name", "name"), ("buyer_company", "company")):
+            if fields.get(role) is not None:
+                setattr(parsed.buyer, attr, str(fields[role]))
+        if fields.get("currency"):
+            parsed.summary.currency = str(fields["currency"])
+        for role in ("subtotal", "tax_amount", "shipping_amount", "discount_amount", "grand_total"):
+            if role in fields and fields[role] not in (None, ""):
+                setattr(parsed.summary, role, clean_num(fields[role]))
 
     @staticmethod
     def _pdf_image_data_urls(file_path: Path) -> List[str]:

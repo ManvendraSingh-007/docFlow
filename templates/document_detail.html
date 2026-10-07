@@ -139,9 +139,9 @@
         <div class="mb-4 flex items-center justify-between">
           <h2 class="flex items-center gap-2 text-sm font-bold uppercase tracking-[0.12em] text-slate-700">
             <span class="material-symbols-outlined" style="font-size:16px;">balance</span>
-            Totals check
+            Document checks
           </h2>
-          <span class="text-xs text-slate-500">Line items ±$0.02 · balance ±$0.05</span>
+          <span class="text-xs text-slate-500">Arithmetic checks use the roles recognized in the extracted data.</span>
         </div>
 
         {% if doc.data and doc.data.extraction_provider %}
@@ -187,46 +187,6 @@
         </div>
       </div>
 
-      {% if doc.data and doc.data.extracted_tables %}
-        <section class="card-shell overflow-hidden" aria-labelledby="extractedTablesHeading">
-          <div class="border-b border-slate-200 px-5 py-4">
-            <h2 id="extractedTablesHeading" class="text-sm font-bold uppercase tracking-[0.12em] text-slate-700">Document tables</h2>
-            <p class="mt-1 text-xs text-slate-500">Columns and rows captured from this document.</p>
-          </div>
-          <div class="space-y-5 p-5">
-            {% for table in doc.data.extracted_tables %}
-              <div>
-                <h3 class="mb-2 text-sm font-semibold text-slate-800">{{ table.title }}</h3>
-                <div class="overflow-x-auto rounded-lg border border-slate-200">
-                  <table class="min-w-full divide-y divide-slate-200 text-xs">
-                    <thead class="bg-slate-50"><tr>{% for column in table.columns %}<th class="whitespace-nowrap px-3 py-2 text-left font-semibold text-slate-600">{{ column }}</th>{% endfor %}</tr></thead>
-                    <tbody class="divide-y divide-slate-100 bg-white">{% for row in table.rows %}<tr>{% for cell in row %}<td class="whitespace-pre-wrap px-3 py-2 align-top text-slate-700">{{ cell }}</td>{% endfor %}</tr>{% endfor %}</tbody>
-                  </table>
-                </div>
-              </div>
-            {% endfor %}
-          </div>
-        </section>
-      {% endif %}
-
-      {% if doc.data and (doc.data.notes or doc.data.additional_details) %}
-        <section class="card-shell p-5" aria-labelledby="extraDetailsHeading">
-          <h2 id="extraDetailsHeading" class="mb-3 text-sm font-bold uppercase tracking-[0.12em] text-slate-700">Other document details</h2>
-          {% if doc.data.notes %}<p class="mb-3 whitespace-pre-wrap text-sm leading-6 text-slate-700">{{ doc.data.notes }}</p>{% endif %}
-          {% if doc.data.additional_details %}
-            <dl class="grid gap-2 sm:grid-cols-2">
-              {% for detail in doc.data.additional_details %}
-                <div class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                  {% if detail.section %}<p class="mb-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">{{ detail.section }}</p>{% endif %}
-                  <dt class="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{{ detail.label }}</dt>
-                  <dd class="mt-1 whitespace-pre-wrap break-words text-sm text-slate-800">{{ detail.value }}</dd>
-                </div>
-              {% endfor %}
-            </dl>
-          {% endif %}
-        </section>
-      {% endif %}
-
       {% if extracted_text %}
         <details class="card-shell group overflow-hidden">
           <summary class="cursor-pointer list-none px-5 py-4 text-sm font-semibold text-slate-700 marker:content-none">
@@ -236,129 +196,14 @@
         </details>
       {% endif %}
 
-      <div id="documentEditor" class="card-shell p-5">
-        <div class="mb-4 flex items-center justify-between border-b border-slate-100 pb-3">
-          <h2 class="text-sm font-bold uppercase tracking-[0.12em] text-slate-700">Document metadata & parties</h2>
-          <button onclick="saveAndRevalidate()" class="inline-flex items-center gap-1 rounded-lg bg-slate-900 px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm hover:bg-slate-700">
-            <span class="material-symbols-outlined" style="font-size:14px;">save</span>
-            Save & re-check
-          </button>
+      <section id="documentEditor" class="card-shell overflow-hidden">
+        <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-5 py-4">
+          <div><h2 id="documentDataTitle" class="text-base font-semibold text-slate-900">Extracted document data</h2><p class="mt-1 text-xs text-slate-500">Fields and tables are arranged from the document’s own structure.</p></div>
+          <div class="flex flex-wrap gap-2"><button type="button" onclick="addDocumentField()" class="rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50">Add field</button><button type="button" onclick="addDocumentTable()" class="rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50">Add table</button><button type="button" onclick="saveAndRevalidate()" class="inline-flex items-center gap-1 rounded-md bg-slate-900 px-3 py-2 text-xs font-semibold text-white hover:bg-slate-700"><span class="material-symbols-outlined" style="font-size:14px">save</span>Save & re-check</button></div>
         </div>
-        <p id="manualEditNotice" class="mb-5 hidden rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs leading-5 text-amber-900" role="status"><span class="font-semibold">You’re editing extracted data.</span> Save & re-check stores your changes and recalculates the arithmetic. Compare them with the source document; the checks don’t verify that your edits match it.</p>
-
-        <div class="mb-6 grid grid-cols-1 gap-4 text-xs sm:grid-cols-3">
-          <div>
-            <label class="mb-1 block font-semibold text-slate-600">Document / PO #</label>
-            <input type="text" id="docNumber" value="{{ doc.data.document_number if doc.data else '' }}" class="w-full rounded-md border border-slate-300 p-2 font-mono text-slate-900 focus:border-slate-500 focus:outline-none">
-          </div>
-          <div>
-            <label class="mb-1 block font-semibold text-slate-600">Order date</label>
-            <input type="text" id="docDate" value="{{ doc.data.document_date if doc.data else '' }}" class="w-full rounded-md border border-slate-300 p-2 text-slate-900 focus:border-slate-500 focus:outline-none">
-          </div>
-          <div>
-            <label class="mb-1 block font-semibold text-slate-600">Payment terms</label>
-            <input type="text" id="paymentTerms" value="{{ doc.data.payment_terms if doc.data else 'Net 30' }}" class="w-full rounded-md border border-slate-300 p-2 text-slate-900 focus:border-slate-500 focus:outline-none">
-          </div>
-        </div>
-
-        <div class="mb-6 grid grid-cols-1 gap-4 text-xs sm:grid-cols-2">
-          <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
-            <span class="mb-2 block text-[10px] font-bold uppercase tracking-[0.12em] text-slate-700">Supplier / vendor</span>
-            <input type="text" id="vendorName" placeholder="Vendor name" value="{{ doc.data.vendor.name if doc.data and doc.data.vendor else '' }}" class="mb-2 w-full rounded p-1.5 border border-slate-300 text-slate-900 focus:border-slate-500 focus:outline-none">
-            <input type="text" id="vendorTaxId" placeholder="Tax / VAT ID" value="{{ doc.data.vendor.tax_id if doc.data and doc.data.vendor and doc.data.vendor.tax_id else '' }}" class="mb-2 w-full rounded p-1.5 border border-slate-300 font-mono text-[11px] text-slate-900 focus:border-slate-500 focus:outline-none">
-            <input type="text" id="vendorAddress" placeholder="Vendor address" value="{{ doc.data.vendor.address if doc.data and doc.data.vendor and doc.data.vendor.address else '' }}" class="w-full rounded p-1.5 border border-slate-300 text-[11px] text-slate-900 focus:border-slate-500 focus:outline-none">
-          </div>
-
-          <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
-            <span class="mb-2 block text-[10px] font-bold uppercase tracking-[0.12em] text-slate-700">Buyer / customer</span>
-            <input type="text" id="buyerCompany" placeholder="Buyer company" value="{{ doc.data.buyer.company if doc.data and doc.data.buyer else '' }}" class="mb-2 w-full rounded p-1.5 border border-slate-300 text-slate-900 focus:border-slate-500 focus:outline-none">
-            <input type="text" id="buyerContact" placeholder="Contact name" value="{{ doc.data.buyer.name if doc.data and doc.data.buyer and doc.data.buyer.name else '' }}" class="mb-2 w-full rounded p-1.5 border border-slate-300 text-slate-900 focus:border-slate-500 focus:outline-none">
-            <input type="text" id="shippingAddress" placeholder="Shipping address" value="{{ doc.data.buyer.shipping_address if doc.data and doc.data.buyer and doc.data.buyer.shipping_address else '' }}" class="w-full rounded p-1.5 border border-slate-300 text-[11px] text-slate-900 focus:border-slate-500 focus:outline-none">
-          </div>
-        </div>
-
-        <div class="mb-6">
-          <div class="mb-2 flex items-center justify-between">
-            <h3 class="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-700">Line items</h3>
-            <button onclick="addLineItem()" class="text-[11px] font-semibold text-slate-700 hover:text-slate-900">+ Add item</button>
-          </div>
-
-          <div class="overflow-x-auto rounded-lg border border-slate-200">
-            <table class="min-w-full divide-y divide-slate-200 text-xs">
-              <thead class="bg-slate-50 font-semibold text-slate-600">
-                <tr>
-                  <th class="w-8 px-2 py-2 text-center">#</th>
-                  <th class="w-24 px-2 py-2">SKU</th>
-                  <th class="px-2 py-2">Description</th>
-                  <th class="w-16 px-2 py-2 text-right">Qty</th>
-                  <th class="w-20 px-2 py-2 text-right">Unit price</th>
-                  <th class="w-24 px-2 py-2 text-right">Line total</th>
-                  <th class="w-8 px-2 py-2 text-center"></th>
-                </tr>
-              </thead>
-              <tbody id="lineItemsTableBody" class="divide-y divide-slate-100 font-mono">
-                {% if doc.data and doc.data.line_items %}
-                  {% for item in doc.data.line_items %}
-                  <tr class="item-row hover:bg-slate-50">
-                    <td class="line-num px-2 py-1.5 text-center text-slate-400">{{ item.line_no }}</td>
-                    <td class="px-2 py-1.5"><input type="text" class="sku-input w-full rounded border border-transparent p-1 text-xs text-slate-900 hover:border-slate-300 focus:border-slate-500 focus:outline-none" value="{{ item.sku }}"></td>
-                    <td class="px-2 py-1.5"><input type="text" class="desc-input w-full rounded border border-transparent p-1 text-xs text-slate-900 hover:border-slate-300 focus:border-slate-500 focus:outline-none" value="{{ item.description }}"></td>
-                    <td class="px-2 py-1.5 text-right"><input type="number" step="any" oninput="recalcRow(this)" class="qty-input w-16 rounded border border-transparent p-1 text-right text-xs text-slate-900 hover:border-slate-300 focus:border-slate-500 focus:outline-none" value="{{ item.quantity }}"></td>
-                    <td class="px-2 py-1.5 text-right"><input type="number" step="0.01" oninput="recalcRow(this)" class="price-input w-20 rounded border border-transparent p-1 text-right text-xs text-slate-900 hover:border-slate-300 focus:border-slate-500 focus:outline-none" value="{{ '%.2f'|format(item.unit_price) }}"></td>
-                    <td class="total-cell px-2 py-1.5 text-right font-semibold text-slate-800">{{ "%.2f"|format(item.line_total or 0) }}</td>
-                    <td class="px-2 py-1.5 text-center"><button onclick="removeLineItem(this)" class="remove-row-btn text-slate-400 hover:text-slate-700" type="button" aria-label="Remove line item"><span class="material-symbols-outlined" style="font-size:16px;">close</span></button></td>
-                  </tr>
-                  {% endfor %}
-                {% endif %}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <div class="bg-slate-50 p-4 rounded-lg border border-slate-200">
-          <div class="max-w-xs ml-auto space-y-2 text-xs">
-            <div class="flex justify-between items-center text-slate-600">
-              <span>Subtotal:</span>
-              <div class="flex items-center font-mono">
-                <span>{{ doc.data.summary.currency if doc.data and doc.data.summary else 'USD' }}</span>
-                <input type="number" step="0.01" id="subtotalInput" oninput="recalcGrandTotal()" class="w-24 text-right p-1 border border-slate-300 rounded font-semibold" value="{{ '%.2f'|format(doc.data.summary.subtotal) if doc.data and doc.data.summary else '0.00' }}">
-              </div>
-            </div>
-
-            <div class="flex justify-between items-center text-slate-600">
-              <span>Tax Amount:</span>
-              <div class="flex items-center font-mono">
-                <span>{{ doc.data.summary.currency if doc.data and doc.data.summary else 'USD' }}</span>
-                <input type="number" step="0.01" id="taxInput" oninput="recalcGrandTotal()" class="w-24 text-right p-1 border border-slate-300 rounded" value="{{ '%.2f'|format(doc.data.summary.tax_amount) if doc.data and doc.data.summary else '0.00' }}">
-              </div>
-            </div>
-
-            <div class="flex justify-between items-center text-slate-600">
-              <span>Shipping & Handling:</span>
-              <div class="flex items-center font-mono">
-                <span>{{ doc.data.summary.currency if doc.data and doc.data.summary else 'USD' }}</span>
-                <input type="number" step="0.01" id="shippingInput" oninput="recalcGrandTotal()" class="w-24 text-right p-1 border border-slate-300 rounded" value="{{ '%.2f'|format(doc.data.summary.shipping_amount) if doc.data and doc.data.summary else '0.00' }}">
-              </div>
-            </div>
-
-            <div class="flex justify-between items-center text-slate-600">
-              <span>Discount:</span>
-              <div class="flex items-center font-mono">
-                <span>-{{ doc.data.summary.currency if doc.data and doc.data.summary else 'USD' }}</span>
-                <input type="number" step="0.01" id="discountInput" oninput="recalcGrandTotal()" class="w-24 text-right p-1 border border-slate-300 rounded" value="{{ '%.2f'|format(doc.data.summary.discount_amount) if doc.data and doc.data.summary else '0.00' }}">
-              </div>
-            </div>
-
-            <div class="pt-2 border-t border-slate-300 flex justify-between items-center font-bold text-slate-900 text-sm">
-              <span>Grand Total:</span>
-              <div class="flex items-center font-mono text-slate-900 font-extrabold text-base">
-                <span>{{ doc.data.summary.currency if doc.data and doc.data.summary else 'USD' }}</span>
-                <input type="number" step="0.01" id="grandTotalInput" class="w-28 text-right p-1 border-2 border-slate-400 rounded font-mono text-slate-900 font-bold" value="{{ '%.2f'|format(doc.data.summary.grand_total) if doc.data and doc.data.summary else '0.00' }}">
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+        <p id="manualEditNotice" class="hidden border-b border-amber-200 bg-amber-50 px-5 py-3 text-xs leading-5 text-amber-900" role="status"><span class="font-semibold">You’re editing extracted data.</span> Save & re-check stores your changes and recalculates available arithmetic checks. It does not compare edits against the original document.</p>
+        <div id="documentDataEditor" class="space-y-5 p-5"></div>
+      </section>
     </div>
   </div>
 </div>
@@ -367,8 +212,8 @@
 {% block scripts %}
 <script>
 const docId = "{{ doc.id }}";
-const documentCurrency = "{{ doc.data.summary.currency if doc.data and doc.data.summary else 'USD' }}";
-let parsedDoc = {{ doc.parsed_json|safe if doc.parsed_json else '{}' }};
+let parsedDoc = {{ doc.data|tojson if doc.data else '{}' }};
+let documentData = normalizeDocumentData(parsedDoc);
 const documentIsProcessing = {{ 'true' if doc.status == 'PROCESSING' else 'false' }};
 
 async function refreshWhenExtractionFinishes() {
@@ -394,129 +239,244 @@ if (documentIsProcessing) {
   }, 400);
 }
 
-function recalcRow(el) {
-  markManualDataEdited();
-  const row = el.closest(".item-row");
-  const qty = parseFloat(row.querySelector(".qty-input").value) || 0;
-  const price = parseFloat(row.querySelector(".price-input").value) || 0;
-  const lineTotal = (qty * price).toFixed(2);
-  row.querySelector(".total-cell").textContent = lineTotal;
-  recalcSubtotal();
+function legacyDocumentData(doc) {
+  const fields = [];
+  const add = (label, value, role = "other", type = "text") => {
+    if (value !== null && value !== undefined && value !== "") fields.push({ label, value, role, type });
+  };
+  add("Document number", doc.document_number, "document_number");
+  add("Document date", doc.document_date, "document_date");
+  add("Due date", doc.due_date, "due_date");
+  add("Payment terms", doc.payment_terms, "payment_terms");
+  add("Vendor", doc.vendor?.name, "vendor_name");
+  add("Vendor tax ID", doc.vendor?.tax_id, "vendor_tax_id");
+  add("Buyer", doc.buyer?.name, "buyer_name");
+  add("Buyer company", doc.buyer?.company, "buyer_company");
+  for (const [label, key, role] of [["Currency", "currency", "currency"], ["Subtotal", "subtotal", "subtotal"], ["Tax", "tax_amount", "tax_amount"], ["Shipping", "shipping_amount", "shipping_amount"], ["Discount", "discount_amount", "discount_amount"], ["Grand total", "grand_total", "grand_total"]]) {
+    add(label, doc.summary?.[key], role, key === "currency" ? "text" : "number");
+  }
+  const tables = (doc.extracted_tables || []).map(table => ({
+    title: table.title || "Document table",
+    columns: (table.columns || []).map(label => typeof label === "string" ? { label, type: "text", role: "other" } : label),
+    rows: table.rows || []
+  }));
+  if (!tables.length && doc.line_items?.length) {
+    tables.push({
+      title: "Line items",
+      columns: [
+        { label: "SKU", type: "text", role: "sku" }, { label: "Description", type: "text", role: "description" },
+        { label: "Quantity", type: "number", role: "quantity" }, { label: "Unit price", type: "number", role: "unit_price" },
+        { label: "Tax rate", type: "number", role: "tax_rate" }, { label: "Line total", type: "number", role: "line_total" }
+      ],
+      rows: doc.line_items.map(item => [item.sku || "", item.description || "", item.quantity ?? "", item.unit_price ?? "", item.tax_rate ?? "", item.line_total ?? ""])
+    });
+  }
+  for (const detail of doc.additional_details || []) add(detail.label, detail.value, "other", "text");
+  return { title: doc.document_type || "Document details", sections: fields.length ? [{ title: "Extracted fields", fields }] : [], tables, notes: doc.notes ? [doc.notes] : [] };
 }
 
-function recalcSubtotal() {
-  let subtotal = 0;
-  document.querySelectorAll(".total-cell").forEach(cell => {
-    subtotal += parseFloat(cell.textContent) || 0;
-  });
-  document.getElementById("subtotalInput").value = subtotal.toFixed(2);
-  recalcGrandTotal();
-}
-
-function recalcGrandTotal() {
-  const subtotal = parseFloat(document.getElementById("subtotalInput").value) || 0;
-  const tax = parseFloat(document.getElementById("taxInput").value) || 0;
-  const shipping = parseFloat(document.getElementById("shippingInput").value) || 0;
-  const discount = parseFloat(document.getElementById("discountInput").value) || 0;
-  const grandTotal = (subtotal + tax + shipping - discount).toFixed(2);
-  document.getElementById("grandTotalInput").value = grandTotal;
-}
-
-function addLineItem() {
-  markManualDataEdited();
-  const tbody = document.getElementById("lineItemsTableBody");
-  const count = tbody.querySelectorAll(".item-row").length + 1;
-  const tr = document.createElement("tr");
-  tr.className = "item-row hover:bg-slate-50";
-  tr.innerHTML = `
-    <td class="px-2 py-1.5 text-center text-slate-400 line-num">${count}</td>
-    <td class="px-2 py-1.5"><input type="text" class="sku-input w-full p-1 border rounded text-xs" value="SKU-NEW"></td>
-    <td class="px-2 py-1.5"><input type="text" class="desc-input w-full p-1 border rounded text-xs" value="New Item Description"></td>
-    <td class="px-2 py-1.5 text-right"><input type="number" step="any" oninput="recalcRow(this)" class="qty-input w-16 p-1 border rounded text-right text-xs" value="1"></td>
-    <td class="px-2 py-1.5 text-right"><input type="number" step="0.01" oninput="recalcRow(this)" class="price-input w-20 p-1 border rounded text-right text-xs" value="0.00"></td>
-    <td class="px-2 py-1.5 text-right font-bold total-cell">0.00</td>
-    <td class="px-2 py-1.5 text-center"><button onclick="removeLineItem(this)" class="text-slate-300 hover:text-slate-700 font-sans font-bold"><span class="material-symbols-outlined" style="font-size:16px;">close</span></button></td>
-  `;
-  tbody.appendChild(tr);
-}
-
-function removeLineItem(btn) {
-  markManualDataEdited();
-  btn.closest(".item-row").remove();
-  recalcSubtotal();
+function normalizeDocumentData(doc) {
+  const data = doc.document_data && typeof doc.document_data === "object" ? structuredClone(doc.document_data) : legacyDocumentData(doc);
+  data.title ||= doc.document_type || "Document details";
+  data.sections ||= [];
+  data.tables ||= [];
+  data.notes ||= [];
+  return data;
 }
 
 function markManualDataEdited() {
   document.getElementById("manualEditNotice")?.classList.remove("hidden");
 }
 
-async function saveAndRevalidate() {
-  const items = [];
-  document.querySelectorAll(".item-row").forEach((row, idx) => {
-    items.push({
-      line_no: idx + 1,
-      sku: row.querySelector(".sku-input").value,
-      description: row.querySelector(".desc-input").value,
-      quantity: parseFloat(row.querySelector(".qty-input").value) || 0,
-      unit_price: parseFloat(row.querySelector(".price-input").value) || 0,
-      line_total: parseFloat(row.querySelector(".total-cell").textContent) || 0,
-      tax_rate: parsedDoc.line_items?.[idx]?.tax_rate ?? null
-    });
-  });
+function createDataInput(value, attrs, numeric = false) {
+  const input = document.createElement("textarea");
+  input.rows = 1;
+  input.value = value === null || value === undefined ? "" : typeof value === "object" ? JSON.stringify(value) : String(value);
+  input.className = "w-full min-w-32 resize-y rounded-md border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-800 focus:border-slate-500 focus:outline-none";
+  for (const [key, val] of Object.entries(attrs)) input.dataset[key] = val;
+  if (numeric) input.inputMode = "decimal";
+  return input;
+}
 
+function renderDocumentData() {
+  const root = document.getElementById("documentDataEditor");
+  if (!root) return;
+  root.replaceChildren();
+  const title = document.getElementById("documentDataTitle");
+  if (title) title.textContent = documentData.title || parsedDoc.document_type || "Extracted document data";
+  documentData.sections.forEach((section, sectionIndex) => {
+    const card = document.createElement("section");
+    card.className = "rounded-xl border border-slate-200 bg-white p-4";
+    const heading = document.createElement("h3");
+    heading.className = "mb-3 text-sm font-semibold text-slate-800";
+    heading.textContent = section.title || "Section " + (sectionIndex + 1);
+    card.appendChild(heading);
+    const grid = document.createElement("div");
+    grid.className = "grid gap-3 sm:grid-cols-2";
+    (section.fields || []).forEach((field, fieldIndex) => {
+      const wrapper = document.createElement("label");
+      wrapper.className = "block text-xs font-medium text-slate-600";
+      const labelInput = createDataInput(field.label || "Field", { fieldLabel: "true", sectionIndex: String(sectionIndex), fieldIndex: String(fieldIndex) });
+      labelInput.classList.add("mb-1", "font-semibold");
+      const valueInput = createDataInput(field.value, { fieldValue: "true", sectionIndex: String(sectionIndex), fieldIndex: String(fieldIndex), valueType: field.type || "text", role: field.role || "" }, ["number", "numeric", "decimal", "integer", "float", "amount", "currency", "percentage"].includes((field.type || "").toLowerCase()));
+      wrapper.append(labelInput, valueInput);
+      grid.appendChild(wrapper);
+    });
+    card.appendChild(grid);
+    root.appendChild(card);
+  });
+  documentData.tables.forEach((table, tableIndex) => {
+    const card = document.createElement("section");
+    card.className = "rounded-xl border border-slate-200 bg-white p-4";
+    const heading = createDataInput(table.title || "Table " + (tableIndex + 1), { tableTitle: "true", tableIndex: String(tableIndex) });
+    heading.classList.add("mb-3", "font-semibold");
+    card.appendChild(heading);
+    const scroll = document.createElement("div");
+    scroll.className = "overflow-x-auto rounded-lg border border-slate-200";
+    const element = document.createElement("table");
+    element.className = "min-w-full divide-y divide-slate-200 text-xs";
+    const thead = document.createElement("thead");
+    thead.className = "bg-slate-50";
+    const headRow = document.createElement("tr");
+    (table.columns || []).forEach((column, columnIndex) => {
+      const th = document.createElement("th");
+      th.className = "px-2 py-2";
+      const input = createDataInput(column.label || "Column " + (columnIndex + 1), { columnLabel: "true", tableIndex: String(tableIndex), columnIndex: String(columnIndex) });
+      input.classList.add("font-semibold");
+      th.appendChild(input);
+      headRow.appendChild(th);
+    });
+    thead.appendChild(headRow);
+    const tbody = document.createElement("tbody");
+    tbody.className = "divide-y divide-slate-100 bg-white";
+    (table.rows || []).forEach((row, rowIndex) => {
+      const tr = document.createElement("tr");
+      (table.columns || []).forEach((column, columnIndex) => {
+        const td = document.createElement("td");
+        td.className = "min-w-36 px-2 py-1.5 align-top";
+        td.appendChild(createDataInput(row[columnIndex], { tableCell: "true", tableIndex: String(tableIndex), rowIndex: String(rowIndex), columnIndex: String(columnIndex), valueType: column.type || "text", role: column.role || "" }, ["number", "numeric", "decimal", "integer", "float", "amount", "currency", "percentage"].includes((column.type || "").toLowerCase())));
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+    element.append(thead, tbody);
+    scroll.appendChild(element);
+    card.appendChild(scroll);
+    const addRow = document.createElement("button");
+    addRow.type = "button";
+    addRow.className = "mt-3 rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50";
+    addRow.textContent = "Add row";
+    addRow.addEventListener("click", () => { readDocumentDataFromEditor(); documentData.tables[tableIndex].rows.push(documentData.tables[tableIndex].columns.map(() => "")); renderDocumentData(); markManualDataEdited(); });
+    const addColumn = document.createElement("button");
+    addColumn.type = "button";
+    addColumn.className = "ml-2 mt-3 rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50";
+    addColumn.textContent = "Add column";
+    addColumn.addEventListener("click", () => { readDocumentDataFromEditor(); documentData.tables[tableIndex].columns.push({ label: "New column", type: "text", role: "other" }); documentData.tables[tableIndex].rows.forEach(row => row.push("")); renderDocumentData(); markManualDataEdited(); });
+    card.append(addRow, addColumn);
+    root.appendChild(card);
+  });
+  if ((documentData.notes || []).length) {
+    const noteSection = document.createElement("section");
+    noteSection.className = "rounded-xl border border-slate-200 bg-slate-50 p-4";
+    const heading = document.createElement("h3");
+    heading.className = "mb-3 text-sm font-semibold text-slate-800";
+    heading.textContent = "Notes";
+    noteSection.appendChild(heading);
+    documentData.notes.forEach((note, noteIndex) => {
+      const input = createDataInput(note, { documentNote: "true", noteIndex: String(noteIndex) });
+      input.rows = 2;
+      input.classList.add("mb-2");
+      noteSection.appendChild(input);
+    });
+    root.appendChild(noteSection);
+  }
+  if (!documentData.sections.length && !documentData.tables.length && !documentData.notes.length) {
+    const empty = document.createElement("p");
+    empty.className = "rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900";
+    empty.textContent = "The AI provider returned no structured fields. Check the source text and retry extraction.";
+    root.appendChild(empty);
+  }
+}
+
+function coerceDataValue(value, type) {
+  if (["number", "numeric", "decimal", "integer", "float", "amount", "currency", "percentage"].includes((type || "").toLowerCase()) && value.trim() !== "") {
+    const number = Number(value.replace(/,/g, ""));
+    if (Number.isFinite(number)) return number;
+  }
+  return value;
+}
+
+function readDocumentDataFromEditor() {
+  for (const input of document.querySelectorAll("[data-field-label]")) {
+    const field = documentData.sections[Number(input.dataset.sectionIndex)]?.fields?.[Number(input.dataset.fieldIndex)];
+    if (field) field.label = input.value;
+  }
+  for (const input of document.querySelectorAll("[data-field-value]")) {
+    const field = documentData.sections[Number(input.dataset.sectionIndex)]?.fields?.[Number(input.dataset.fieldIndex)];
+    if (field) field.value = coerceDataValue(input.value, input.dataset.valueType);
+  }
+  for (const input of document.querySelectorAll("[data-table-title]")) {
+    const table = documentData.tables[Number(input.dataset.tableIndex)];
+    if (table) table.title = input.value;
+  }
+  for (const input of document.querySelectorAll("[data-column-label]")) {
+    const column = documentData.tables[Number(input.dataset.tableIndex)]?.columns?.[Number(input.dataset.columnIndex)];
+    if (column) column.label = input.value;
+  }
+  for (const input of document.querySelectorAll("[data-table-cell]")) {
+    const table = documentData.tables[Number(input.dataset.tableIndex)];
+    const row = table?.rows?.[Number(input.dataset.rowIndex)];
+    const column = table?.columns?.[Number(input.dataset.columnIndex)];
+    if (row && column) row[Number(input.dataset.columnIndex)] = coerceDataValue(input.value, column.type || input.dataset.valueType);
+  }
+  for (const input of document.querySelectorAll("[data-document-note]")) {
+    if (documentData.notes[Number(input.dataset.noteIndex)] !== undefined) documentData.notes[Number(input.dataset.noteIndex)] = input.value;
+  }
+}
+
+function addDocumentField() {
+  readDocumentDataFromEditor();
+  if (!documentData.sections.length) documentData.sections.push({ title: "Additional details", fields: [] });
+  documentData.sections[0].fields.push({ label: "New field", value: "", type: "text", role: "other" });
+  renderDocumentData();
+  markManualDataEdited();
+}
+
+function addDocumentTable() {
+  readDocumentDataFromEditor();
+  documentData.tables.push({ title: "New table", columns: [{ label: "Column", type: "text", role: "other" }], rows: [[""]] });
+  renderDocumentData();
+  markManualDataEdited();
+}
+
+async function saveAndRevalidate() {
+  readDocumentDataFromEditor();
   const payload = {
-    document_type: parsedDoc.document_type || "PURCHASE_ORDER",
-    document_number: document.getElementById("docNumber").value,
-    document_date: document.getElementById("docDate").value,
-    due_date: parsedDoc.due_date || null,
-    payment_terms: document.getElementById("paymentTerms").value,
-    vendor: {
-      name: document.getElementById("vendorName").value,
-      tax_id: document.getElementById("vendorTaxId").value,
-      address: document.getElementById("vendorAddress").value,
-      email: parsedDoc.vendor?.email || null,
-      phone: parsedDoc.vendor?.phone || null
-    },
-    buyer: {
-      company: document.getElementById("buyerCompany").value,
-      name: document.getElementById("buyerContact").value,
-      shipping_address: document.getElementById("shippingAddress").value,
-      email: parsedDoc.buyer?.email || null,
-      billing_address: parsedDoc.buyer?.billing_address || null
-    },
-    line_items: items,
+    document_type: parsedDoc.document_type || "DOCUMENT",
+    document_data: documentData,
     extraction_provider: parsedDoc.extraction_provider || null,
     extraction_model: parsedDoc.extraction_model || null,
     extraction_fallback: Boolean(parsedDoc.extraction_fallback),
     extraction_requested_provider: parsedDoc.extraction_requested_provider || null,
-    extraction_error: parsedDoc.extraction_error || null,
-    notes: parsedDoc.notes || null,
-    additional_details: parsedDoc.additional_details || [],
-    extracted_tables: parsedDoc.extracted_tables || [],
-    summary: {
-      currency: documentCurrency,
-      subtotal: parseFloat(document.getElementById("subtotalInput").value) || 0,
-      tax_amount: parseFloat(document.getElementById("taxInput").value) || 0,
-      shipping_amount: parseFloat(document.getElementById("shippingInput").value) || 0,
-      discount_amount: parseFloat(document.getElementById("discountInput").value) || 0,
-      grand_total: parseFloat(document.getElementById("grandTotalInput").value) || 0
-    }
+    extraction_error: parsedDoc.extraction_error || null
   };
-
   try {
-    const res = await fetch(`/api/documents/${docId}`, {
+    const res = await fetch("/api/documents/" + docId, {
       method: "PUT",
       headers: { "Content-Type": "application/json", "X-CSRF-Token": document.querySelector('meta[name="csrf-token"]').content },
       body: JSON.stringify(payload)
     });
     const result = await res.json();
     if (!res.ok) throw new Error(result.detail || "Request failed");
-    window.showToast("Invoice details saved and checks rerun.");
+    window.showToast("Document data saved and available checks rerun.");
     window.setTimeout(() => window.location.reload(), 900);
-  } catch (e) {
-    window.showToast("Could not save invoice details: " + e.message, "error");
+  } catch (error) {
+    window.showToast("Could not save document data: " + error.message, "error");
   }
 }
+
+document.getElementById("documentEditor")?.addEventListener("input", markManualDataEdited);
+renderDocumentData();
 
 async function dispatchWebhook() {
   const btn = document.getElementById("dispatchBtn");
@@ -560,7 +520,8 @@ async function retryExtraction() {
 }
 
 function downloadJson() {
-  const blob = new Blob([JSON.stringify(parsedDoc, null, 2)], { type: "application/json" });
+  readDocumentDataFromEditor();
+  const blob = new Blob([JSON.stringify({ ...parsedDoc, document_data: documentData }, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -568,6 +529,5 @@ function downloadJson() {
   a.click();
 }
 
-document.getElementById("documentEditor")?.addEventListener("input", markManualDataEdited);
 </script>
 {% endblock %}

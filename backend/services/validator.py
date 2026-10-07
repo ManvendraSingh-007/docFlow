@@ -120,6 +120,8 @@ class DocumentValidator:
         has_extracted_content = bool(
             doc.document_number or doc.document_date or doc.vendor.name or doc.buyer.company
             or doc.line_items or stated_subtotal or stated_total
+            or any(isinstance(section, dict) and section.get("fields") for section in (doc.document_data or {}).get("sections", []))
+            or any(isinstance(table, dict) and table.get("rows") for table in (doc.document_data or {}).get("tables", []))
         )
 
         checks.append(ValidationCheck(

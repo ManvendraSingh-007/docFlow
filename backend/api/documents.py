@@ -202,7 +202,8 @@ def update_document_data(doc_id: str, updated_data: ParsedDocumentData, user: di
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    # Re-validate math
+    if updated_data.document_data:
+        DocumentExtractor._apply_document_roles(updated_data)
     DocumentValidator.validate(updated_data)
     DocumentRepository.update_parsed_data(doc_id, updated_data, user_id=user["id"])
     
@@ -252,36 +253,52 @@ def export_csv(doc_id: str, user: dict = Depends(current_user)):
     output = io.StringIO()
     writer = csv.writer(output)
 
-    # Header
-    writer.writerow([
-        "PO/Doc Number", "Date", "Vendor", "Buyer", "Line No",
-        "SKU", "Description", "Quantity", "Unit Price", "Line Total",
-        "Subtotal", "Tax", "Shipping", "Grand Total", "Currency"
-    ])
-
+    document_data = data.get("document_data") or {}
     po_num = data.get("document_number", "")
-    po_date = data.get("document_date", "")
-    vendor = data.get("vendor", {}).get("name", "")
-    buyer = data.get("buyer", {}).get("company", "")
-    subtotal = data.get("summary", {}).get("subtotal", 0.0)
-    tax = data.get("summary", {}).get("tax_amount", 0.0)
-    shipping = data.get("summary", {}).get("shipping_amount", 0.0)
-    total = data.get("summary", {}).get("grand_total", 0.0)
-    currency = data.get("summary", {}).get("currency", "USD")
-
-    for item in data.get("line_items", []):
+    if document_data:
+        for section in document_data.get("sections", []):
+            writer.writerow([section.get("title") or "Document fields"])
+            writer.writerow(["Field", "Value"])
+            for field in section.get("fields", []):
+                writer.writerow([field.get("label", ""), field.get("value", "")])
+        tables = document_data.get("tables", [])
+        for table in tables:
+            writer.writerow([])
+            writer.writerow([table.get("title") or "Document table"])
+            columns = table.get("columns") or []
+            labels = [column.get("label", "") if isinstance(column, dict) else column for column in columns]
+            if labels:
+                writer.writerow(labels)
+            writer.writerows(table.get("rows") or [])
+        for note in document_data.get("notes", []):
+            writer.writerow([])
+            writer.writerow(["Note", note])
+    else:
         writer.writerow([
-            po_num, po_date, vendor, buyer,
-            item.get("line_no"), item.get("sku"), item.get("description"),
-            item.get("quantity"), item.get("unit_price"), item.get("line_total"),
-            subtotal, tax, shipping, total, currency
+            "PO/Doc Number", "Date", "Vendor", "Buyer", "Line No",
+            "SKU", "Description", "Quantity", "Unit Price", "Line Total",
+            "Subtotal", "Tax", "Shipping", "Grand Total", "Currency"
         ])
-
-    for table in data.get("extracted_tables", []):
+        po_date = data.get("document_date", "")
+        vendor = data.get("vendor", {}).get("name", "")
+        buyer = data.get("buyer", {}).get("company", "")
+        subtotal = data.get("summary", {}).get("subtotal", 0.0)
+        tax = data.get("summary", {}).get("tax_amount", 0.0)
+        shipping = data.get("summary", {}).get("shipping_amount", 0.0)
+        total = data.get("summary", {}).get("grand_total", 0.0)
+        currency = data.get("summary", {}).get("currency", "USD")
+        for item in data.get("line_items", []):
+            writer.writerow([
+                po_num, po_date, vendor, buyer,
+                item.get("line_no"), item.get("sku"), item.get("description"),
+                item.get("quantity"), item.get("unit_price"), item.get("line_total"),
+                subtotal, tax, shipping, total, currency
+            ])
+    for table in ([] if document_data else data.get("extracted_tables", [])):
         writer.writerow([])
         writer.writerow([table.get("title") or "Document table"])
-        if table.get("columns"):
-            writer.writerow(table["columns"])
+        columns = table.get("columns") or []
+        writer.writerow([column.get("label", "") if isinstance(column, dict) else column for column in columns])
         writer.writerows(table.get("rows") or [])
 
     output.seek(0)

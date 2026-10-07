@@ -47,7 +47,7 @@ python scripts/check_extraction.py --provider gemini sample_data
 
 Set the selected provider's API key in the environment first. The command sends every PDF to that provider and may incur usage charges. It prints one result per PDF and summarizes verified, review-required, failed, and error counts. `PASS` reflects DocFlow's arithmetic checks; it is not a field-accuracy score without known expected values. To scan another folder or one PDF, pass its path instead of `sample_data`.
 
-AI extraction returns standard invoice fields plus document-specific fields and tables. The table headings and values remain available in the inspection page, JSON response, CSV export, and webhook payload.
+AI extraction returns document-specific sections and tables as JSON. The inspection editor is generated from those sections and table columns, so it can show details that were not anticipated by a fixed invoice form. The same structure is included in the API response, JSON download, CSV export, and webhook payload. Arithmetic checks use optional semantic roles returned by the AI and remain available when the document supplies recognizable totals and item columns.
 
 ---
 
