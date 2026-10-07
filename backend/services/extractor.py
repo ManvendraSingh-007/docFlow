@@ -20,7 +20,9 @@ SYSTEM_PROMPT = """You are a multimodal document analyst. Inspect every page of 
 
 Design the data structure from the document itself. Group its fields into meaningful sections using the document's own concepts. Create a separate table for each distinct table in the document. Each table must have columns based on the printed headings and one row per source row. Include every visible meaningful field and cell, including unfamiliar regional or product fields such as GST, HSN/SAC, rate, discount, MRP, batch/lot, manufacture/expiry, pack size, and split taxes. Do not force the document into a predefined invoice layout or omit a field because it has no standard counterpart.
 
-For each field and table column, include an optional role when confidently recognized. Roles are metadata used only for arithmetic checks: document_number, document_date, due_date, payment_terms, vendor_name, vendor_tax_id, buyer_name, buyer_company, currency, sku, description, quantity, unit_price, tax_rate, line_total, subtotal, tax_amount, shipping_amount, discount_amount, grand_total. Use role `other` or omit role for anything else. Keep all original labels and values regardless of role.
+For each field and table column, include an optional role when confidently recognized. Roles are metadata used only for arithmetic checks: document_number, document_date, due_date, payment_terms, vendor_name, vendor_tax_id, buyer_name, buyer_company, currency, sku, description, quantity, unit_price, net_unit_price, tax_rate, line_total, line_discount_amount, line_discount_rate, line_tax_amount, line_charge_amount, subtotal, tax_amount, shipping_amount, discount_amount, grand_total. Use role `other` or omit role for anything else. Keep all original labels and values regardless of role.
+
+In `arithmetic_rules`, identify a rule only when the source layout and extracted columns clearly support it. Supported line_total_basis values: `quantity_times_unit_price`, `quantity_times_unit_price_less_discount_amount`, `quantity_times_unit_price_less_discount_rate`, `quantity_times_net_unit_price`, `quantity_times_unit_price_plus_line_tax`, `quantity_times_unit_price_less_discount_amount_plus_line_tax`, `quantity_times_unit_price_less_discount_rate_plus_line_tax`. Supported subtotal_basis: `sum_of_line_totals`. Supported grand_total_basis values: `subtotal_plus_tax_shipping_less_discount`, `subtotal_plus_tax_shipping`, `subtotal_plus_tax_less_discount`, `subtotal_plus_tax`, `subtotal_plus_shipping`, `subtotal_less_discount`. Otherwise use null. Never choose a rule just because it is common on invoices.
 
 Preserve printed labels, units, currencies, signs, and date text. Never invent a value or calculate a value the source does not state. Put values into scalar JSON strings or numbers. Keep table cells aligned to their declared columns. Capture useful notes, references, delivery instructions, contacts, addresses, and footers in sections or notes. Return only valid JSON matching the requested structure; no markdown or commentary.
 """
@@ -35,6 +37,7 @@ EXTRACTION_SCHEMA = {
         "tables": [
             {"title": "Table title", "columns": [{"key": "column_key", "label": "Printed column heading", "type": "text", "role": "other"}], "rows": [["Cell value"]]}
         ],
+        "arithmetic_rules": {"line_total_basis": None, "subtotal_basis": None, "grand_total_basis": None},
         "notes": []
     }
 }
@@ -377,7 +380,7 @@ class DocumentExtractor:
             for field in ("quantity", "unit_price", "tax_rate", "line_total", "discrepancy"):
                 item[field] = number_value(item.get(field))
             # The arithmetic validator recalculates this flag; do not trust model output.
-            item["math_verified"] = True
+            item["math_verified"] = None
             normalized_items.append(item)
         normalized["line_items"] = normalized_items
 
@@ -500,7 +503,7 @@ class DocumentExtractor:
                 })
 
         extra_fields = []
-        known_keys = {"title", "document_title", "sections", "fields", "tables", "notes"}
+        known_keys = {"title", "document_title", "sections", "fields", "tables", "notes", "arithmetic_rules"}
         def flatten_extra(label, value):
             if isinstance(value, dict) and value:
                 for child_label, child_value in value.items():
@@ -649,6 +652,7 @@ class DocumentExtractor:
                         unit_price=clean_num(values.get("unit_price")),
                         tax_rate=clean_num(values.get("tax_rate")),
                         line_total=clean_num(values.get("line_total")),
+                        pricing_adjustments={role: value for role, value in values.items() if value not in (None, "")},
                     ))
                 for role in ("currency", "subtotal", "tax_amount", "shipping_amount", "discount_amount", "grand_total"):
                     if role in values and values[role] not in (None, ""):

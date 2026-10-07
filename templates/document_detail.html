@@ -176,7 +176,7 @@
 
           {% if doc.data and doc.data.verification and doc.data.verification.flags %}
             <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
-              <span class="mb-1 block text-[11px] font-bold uppercase tracking-[0.12em] text-slate-700">Details to review</span>
+              <span class="mb-1 block text-[11px] font-bold uppercase tracking-[0.12em] text-slate-700">Validation notes</span>
               <ul class="list-disc space-y-1 pl-5 text-xs text-slate-600">
                 {% for flag in doc.data.verification.flags %}
                   <li>{{ flag }}</li>

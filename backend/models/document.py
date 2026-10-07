@@ -38,8 +38,9 @@ class LineItem(BaseModel):
     tax_rate: Optional[float] = 0.0
     line_total: float = 0.0
     # Math verification flags
-    math_verified: bool = True
+    math_verified: Optional[bool] = None
     discrepancy: float = 0.0
+    pricing_adjustments: Dict[str, Any] = Field(default_factory=dict)
 
 class FinancialSummary(BaseModel):
     currency: str = "USD"
