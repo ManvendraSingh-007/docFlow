@@ -357,38 +357,103 @@ class DocumentExtractor:
     @staticmethod
     def _parse_ai_result(parsed_dict: Dict[str, Any]) -> ParsedDocumentData:
         normalized = dict(parsed_dict)
-        if normalized.get("additional_details") is None:
-            normalized["additional_details"] = []
+
+        def text_value(value, default=None):
+            if value is None:
+                return default
+            if isinstance(value, str):
+                return value.strip() or default
+            if isinstance(value, (dict, list)):
+                return json.dumps(value, ensure_ascii=False)
+            return str(value)
+
+        def number_value(value, default=0.0):
+            if value is None or isinstance(value, str) and not value.strip():
+                return default
+            if isinstance(value, bool):
+                return float(value)
+            try:
+                return float(value)
+            except (TypeError, ValueError):
+                # Gemini may return formatted values such as "$1,234.50".
+                return clean_num(value)
+
+        normalized["verification"] = None  # Always calculate checks from normalized values below.
+        normalized["document_type"] = text_value(normalized.get("document_type"), "PURCHASE_ORDER")
+        for field in ("document_number", "document_date", "due_date", "payment_terms", "notes"):
+            normalized[field] = text_value(normalized.get(field))
+
+        for party_field in ("vendor", "buyer"):
+            party = normalized.get(party_field)
+            if not isinstance(party, dict):
+                party = {}
+            else:
+                party = dict(party)
+            for field, value in party.items():
+                party[field] = text_value(value)
+            normalized[party_field] = party
+
         summary = normalized.get("summary")
-        if summary is None:
+        if not isinstance(summary, dict):
             summary = {}
-        if isinstance(summary, dict):
+        else:
             summary = dict(summary)
-            if not summary.get("currency"):
-                summary["currency"] = "UNKNOWN"
-            for field in ("subtotal", "tax_amount", "shipping_amount", "discount_amount", "grand_total"):
-                if summary.get(field) is None:
-                    summary[field] = 0.0
-            normalized["summary"] = summary
+        summary["currency"] = text_value(summary.get("currency"), "UNKNOWN")
+        for field in ("subtotal", "tax_amount", "shipping_amount", "discount_amount", "grand_total"):
+            summary[field] = number_value(summary.get(field))
+        normalized["summary"] = summary
 
         line_items = normalized.get("line_items")
-        if line_items is None:
+        if isinstance(line_items, dict):
+            line_items = [line_items]
+        if not isinstance(line_items, list):
             line_items = []
-        if isinstance(line_items, list):
-            normalized_items = []
-            for index, item in enumerate(line_items):
-                if not isinstance(item, dict):
-                    normalized_items.append(item)
-                    continue
-                item = dict(item)
-                if item.get("line_no") is None:
-                    item["line_no"] = index + 1
-                for field in ("quantity", "unit_price", "line_total"):
-                    if item.get(field) is None:
-                        item[field] = 0.0
-                normalized_items.append(item)
-            normalized["line_items"] = normalized_items
-        return ParsedDocumentData(**normalized)
+        normalized_items = []
+        for index, raw_item in enumerate(line_items):
+            if isinstance(raw_item, dict):
+                item = dict(raw_item)
+            elif isinstance(raw_item, str):
+                item = {"description": raw_item}
+            else:
+                continue
+            line_no = number_value(item.get("line_no"), index + 1)
+            item["line_no"] = max(1, int(line_no))
+            item["sku"] = text_value(item.get("sku"), "") or ""
+            item["description"] = text_value(item.get("description"), "") or ""
+            for field in ("quantity", "unit_price", "tax_rate", "line_total", "discrepancy"):
+                item[field] = number_value(item.get(field))
+            # The arithmetic validator recalculates this flag; do not trust model output.
+            item["math_verified"] = True
+            normalized_items.append(item)
+        normalized["line_items"] = normalized_items
+
+        details = normalized.get("additional_details")
+        if isinstance(details, dict):
+            details = [{"label": label, "value": value} for label, value in details.items()]
+        if not isinstance(details, list):
+            details = []
+        normalized_details = []
+        for item in details:
+            if isinstance(item, dict):
+                label = text_value(item.get("label") or item.get("name"), "Additional detail")
+                value = text_value(item.get("value") or item.get("text"), "")
+            elif isinstance(item, str):
+                label, value = "Additional detail", item.strip()
+            else:
+                continue
+            if value:
+                normalized_details.append({"label": label, "value": value})
+        normalized["additional_details"] = normalized_details
+
+        try:
+            return ParsedDocumentData(**normalized)
+        except Exception as exc:
+            errors = getattr(exc, "errors", None)
+            if callable(errors):
+                paths = [".".join(str(part) for part in error.get("loc", ())) for error in errors()]
+                if paths:
+                    raise ValueError("Model response has invalid fields: " + ", ".join(paths)) from exc
+            raise
 
     @staticmethod
     def _pdf_image_data_urls(file_path: Path) -> List[str]:
