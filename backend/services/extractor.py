@@ -16,13 +16,11 @@ from backend.models.document import (
 )
 from backend.services.validator import DocumentValidator
 
-SYSTEM_PROMPT = """You are a high-precision B2B document extraction engine.
-Extract all structured data from this Purchase Order, Invoice, or Delivery Slip.
-Ensure exact arithmetic: extract line item descriptions, SKUs, quantities, unit prices, line totals, subtotal, taxes, shipping, discounts, and grand total.
-Also preserve notes, references, delivery instructions, contacts, dates, addresses, and every other labeled field in notes or additional_details when it has no matching field above. Do not silently omit visible information.
-Never invent missing values. Return null for unknown scalar fields, an empty string for an unknown description, and an empty array when no line items are visible.
-Preserve the currency shown on the document. Do not use the example values in the schema as extracted data.
-Always return strictly valid JSON conforming to the requested schema. Do not include markdown ticks or commentary outside JSON.
+SYSTEM_PROMPT = """You are a multimodal business-document extraction engine. Inspect every page of the supplied document visually and read its printed text and tables. Documents may use unfamiliar layouts, regional tax rules, abbreviations, or product-specific columns.
+
+Capture every visible meaningful field and every table column and row. Preserve document-specific fields such as GST/VAT, HSN/SAC, rate, discount, MRP, batch/lot, manufacture or expiry date, unit, pack size, scheme, tax split, and product identifiers. Return table headings and cell values in extracted_tables, keeping each value on its original row. Return labeled values outside tables in additional_details, grouped by section when useful. Include standard normalized fields too when the document supports them. Do not force unfamiliar values into an incorrect standard field, and do not omit them just because they are absent from the standard schema.
+
+Preserve labels, units, currencies, signs, and date text as printed. Never invent missing values or calculate a value the document does not state. Leave unknown standard scalar fields null and use empty arrays when there is no corresponding data. Capture notes, references, delivery instructions, contacts, addresses, and footers when meaningful. Return only valid JSON matching the requested structure; no markdown or commentary.
 """
 
 EXTRACTION_SCHEMA = {
@@ -45,17 +43,7 @@ EXTRACTION_SCHEMA = {
         "billing_address": None,
         "shipping_address": None
     },
-    "line_items": [
-        {
-            "line_no": 0,
-            "sku": None,
-            "description": "",
-            "quantity": 0.0,
-            "unit_price": 0.0,
-            "tax_rate": None,
-            "line_total": 0.0
-        }
-    ],
+    "line_items": [],
     "summary": {
         "currency": None,
         "subtotal": None,
@@ -65,8 +53,9 @@ EXTRACTION_SCHEMA = {
         "grand_total": None
     },
     "notes": None,
-    "additional_details": [
-        {"label": "Other document field", "value": "Captured text or value not represented above"}
+    "additional_details": [],
+    "extracted_tables": [
+        {"title": "Table title", "columns": ["Printed heading"], "rows": [["Printed cell value"]]}
     ]
 }
 
@@ -79,9 +68,8 @@ def clean_num(val) -> float:
 
 class DocumentExtractor:
     """
-    Multi-engine document extraction service.
-    Supports Google Gemini (multimodal vision), OpenAI, and an advanced
-    Layout-Aware Multi-Page Table & Heuristic parser.
+    Multimodal AI document extraction service for Google Gemini, OpenAI,
+    Mistral, and OpenRouter.
     """
 
     @classmethod
@@ -100,6 +88,8 @@ class DocumentExtractor:
         provider = (account_settings.get("default_provider") or settings.default_provider).lower()
 
         # Decide provider
+        if provider == "heuristic":
+            provider = "auto"  # Upgrade accounts saved before AI-only extraction.
         if provider == "auto":
             if gemini_api_key:
                 provider = "gemini"
@@ -110,7 +100,7 @@ class DocumentExtractor:
             elif openrouter_api_key:
                 provider = "openrouter"
             else:
-                provider = "heuristic"
+                raise RuntimeError("No AI provider key is configured. Add a provider key in Extraction settings before processing documents.")
 
         requested_provider = provider
         model_by_provider = {
@@ -118,70 +108,43 @@ class DocumentExtractor:
             "openai": openai_model,
             "mistral": mistral_model,
             "openrouter": credentials.get("openrouter", {}).get("model") or account_settings.get("openrouter_model") or "google/gemini-2.5-flash",
-            "heuristic": "pdfplumber layout parser",
         }
-        used_provider = {"gemini": "Google Gemini", "openai": "OpenAI", "mistral": "Mistral", "openrouter": "OpenRouter", "heuristic": "Local parser"}.get(provider, provider)
+        used_provider = {"gemini": "Google Gemini", "openai": "OpenAI", "mistral": "Mistral", "openrouter": "OpenRouter"}.get(provider, provider)
         used_model = model_by_provider.get(provider, "")
-        extraction_fallback = False
-        extraction_error = None
-        parsed_data = None
-        if provider == "gemini" and gemini_api_key:
-            try:
-                parsed_data = await cls._extract_with_gemini(file_path, mime_type, gemini_api_key, gemini_model)
-            except Exception as e:
-                print(f"[Extractor] Gemini extraction failed, falling back to layout parser: {e}")
-                extraction_error = f"Gemini request failed: {e}"
-                parsed_data = await cls._extract_smart_layout(file_path)
-                used_provider, used_model, extraction_fallback = "Local parser", "pdfplumber layout parser", True
-        elif provider == "openai" and openai_api_key:
-            try:
-                parsed_data = await cls._extract_with_openai(file_path, mime_type, openai_api_key, openai_model)
-            except Exception as e:
-                print(f"[Extractor] OpenAI extraction failed, falling back to layout parser: {e}")
-                extraction_error = f"OpenAI request failed: {e}"
-                parsed_data = await cls._extract_smart_layout(file_path)
-                used_provider, used_model, extraction_fallback = "Local parser", "pdfplumber layout parser", True
-        elif provider == "mistral" and mistral_api_key:
-            try:
-                parsed_data = await cls._extract_with_compatible_vision(file_path, mime_type, mistral_api_key, "https://api.mistral.ai/v1/chat/completions", mistral_model)
-            except Exception as e:
-                print(f"[Extractor] Mistral extraction failed, falling back to layout parser: {e}")
-                extraction_error = f"Mistral request failed: {e}"
-                parsed_data = await cls._extract_smart_layout(file_path)
-                used_provider, used_model, extraction_fallback = "Local parser", "pdfplumber layout parser", True
-        elif provider == "openrouter" and openrouter_api_key:
-            try:
-                model = credentials.get("openrouter", {}).get("model") or account_settings.get("openrouter_model") or "google/gemini-2.5-flash"
-                parsed_data = await cls._extract_with_compatible_vision(file_path, mime_type, openrouter_api_key, "https://openrouter.ai/api/v1/chat/completions", model)
-            except Exception as e:
-                print(f"[Extractor] OpenRouter extraction failed, falling back to layout parser: {e}")
-                extraction_error = f"OpenRouter request failed: {e}"
-                parsed_data = await cls._extract_smart_layout(file_path)
-                used_provider, used_model, extraction_fallback = "Local parser", "pdfplumber layout parser", True
+        if provider == "gemini":
+            if not gemini_api_key:
+                raise RuntimeError("No Google Gemini key is selected. Add or select a key in Extraction settings.")
+            parsed_data = await cls._extract_with_gemini(file_path, mime_type, gemini_api_key, gemini_model)
+        elif provider == "openai":
+            if not openai_api_key:
+                raise RuntimeError("No OpenAI key is selected. Add or select a key in Extraction settings.")
+            parsed_data = await cls._extract_with_openai(file_path, mime_type, openai_api_key, openai_model)
+        elif provider == "mistral":
+            if not mistral_api_key:
+                raise RuntimeError("No Mistral key is selected. Add or select a key in Extraction settings.")
+            parsed_data = await cls._extract_with_compatible_vision(file_path, mime_type, mistral_api_key, "https://api.mistral.ai/v1/chat/completions", mistral_model)
+        elif provider == "openrouter":
+            if not openrouter_api_key:
+                raise RuntimeError("No OpenRouter key is selected. Add or select a key in Extraction settings.")
+            model = credentials.get("openrouter", {}).get("model") or account_settings.get("openrouter_model") or "google/gemini-2.5-flash"
+            parsed_data = await cls._extract_with_compatible_vision(file_path, mime_type, openrouter_api_key, "https://openrouter.ai/api/v1/chat/completions", model)
         else:
-            parsed_data = await cls._extract_smart_layout(file_path)
-            if provider != "heuristic":
-                extraction_fallback = True
-                used_provider, used_model = "Local parser", "pdfplumber layout parser"
-                extraction_error = f"No active API key is available for {provider}. Select a saved key or add one in Extraction settings."
+            raise ValueError(f"Unsupported AI extraction provider: {provider}")
 
         # Keep the readable PDF text alongside vision extraction too. It provides
         # an audit trail for details that do not fit the structured invoice fields.
-        if not extraction_fallback and provider in {"gemini", "openai", "mistral", "openrouter"}:
+        if provider in {"gemini", "openai", "mistral", "openrouter"}:
             try:
-                text_data = await cls._extract_smart_layout(file_path)
-                parsed_data.source_text = text_data.source_text
-                if not parsed_data.additional_details and text_data.additional_details:
-                    parsed_data.additional_details = text_data.additional_details
+                parsed_data.source_text = await cls._extract_pdf_text(file_path)
             except Exception as exc:
                 print(f"[Extractor] Could not retain document text layer: {exc}")
 
         parsed_data.extraction_provider = used_provider
         if not parsed_data.extraction_model:
             parsed_data.extraction_model = used_model
-        parsed_data.extraction_fallback = extraction_fallback
+        parsed_data.extraction_fallback = False
         parsed_data.extraction_requested_provider = requested_provider
-        parsed_data.extraction_error = extraction_error
+        parsed_data.extraction_error = None
         # Always run math validation check on the extracted data
         DocumentValidator.validate(parsed_data)
         return parsed_data
@@ -436,14 +399,56 @@ class DocumentExtractor:
         for item in details:
             if isinstance(item, dict):
                 label = text_value(item.get("label") or item.get("name"), "Additional detail")
-                value = text_value(item.get("value") or item.get("text"), "")
+                raw_value = item.get("value") if item.get("value") is not None else item.get("text")
+                value = text_value(raw_value, "")
             elif isinstance(item, str):
                 label, value = "Additional detail", item.strip()
             else:
                 continue
             if value:
-                normalized_details.append({"label": label, "value": value})
+                normalized_details.append({
+                    "label": label,
+                    "value": value,
+                    "section": text_value(item.get("section") or item.get("group")) if isinstance(item, dict) else None,
+                })
         normalized["additional_details"] = normalized_details
+
+        raw_tables = normalized.get("extracted_tables") or normalized.get("tables") or []
+        if isinstance(raw_tables, dict):
+            raw_tables = [raw_tables]
+        normalized_tables = []
+        for table_index, raw_table in enumerate(raw_tables if isinstance(raw_tables, list) else []):
+            if not isinstance(raw_table, dict):
+                continue
+            raw_columns = raw_table.get("columns") or raw_table.get("headers") or []
+            raw_rows = raw_table.get("rows") or raw_table.get("data") or []
+            columns = [text_value(column, "") or "" for column in raw_columns] if isinstance(raw_columns, list) else []
+            if not columns and isinstance(raw_rows, list):
+                for raw_row in raw_rows:
+                    if isinstance(raw_row, dict):
+                        for key in raw_row:
+                            label = text_value(key, "") or ""
+                            if label not in columns:
+                                columns.append(label)
+            rows = []
+            for raw_row in raw_rows if isinstance(raw_rows, list) else []:
+                if isinstance(raw_row, dict):
+                    if not columns:
+                        columns = [text_value(key, "") or "" for key in raw_row.keys()]
+                    rows.append([text_value(raw_row.get(column), "") or "" for column in columns])
+                elif isinstance(raw_row, (list, tuple)):
+                    rows.append([text_value(cell, "") or "" for cell in raw_row])
+            if columns and rows:
+                # Keep each row rectangular without discarding unexpected cells.
+                width = max(len(columns), max(len(row) for row in rows))
+                columns.extend(f"Column {index + 1}" for index in range(len(columns), width))
+                rows = [row + [""] * (width - len(row)) for row in rows]
+                normalized_tables.append({
+                    "title": text_value(raw_table.get("title") or raw_table.get("name"), f"Document table {table_index + 1}"),
+                    "columns": columns,
+                    "rows": rows,
+                })
+        normalized["extracted_tables"] = normalized_tables
 
         try:
             return ParsedDocumentData(**normalized)
@@ -478,476 +483,21 @@ class DocumentExtractor:
             document.close()
         return image_data_urls
 
-    @classmethod
-    async def _extract_smart_layout(cls, file_path: Path) -> ParsedDocumentData:
-        """
-        Advanced Layout-Aware Multi-Page Table & Heuristic Extractor.
-        Leverages pdfplumber to accurately parse multi-page tables, headers,
-        financial blocks, line items, and vendor/buyer details.
-        """
-        full_text = ""
-        pages_text = []
-        all_tables = []
-        metadata_text = ""
-        is_pdf = file_path.suffix.lower() == ".pdf"
-
-        if is_pdf:
+    @staticmethod
+    async def _extract_pdf_text(file_path: Path) -> str:
+        """Retain a text-layer copy for reference; it does not extract fields."""
+        file_path = Path(file_path)
+        chunks = []
+        if file_path.suffix.lower() == ".pdf":
             try:
                 with pdfplumber.open(file_path) as pdf:
-                    for p in pdf.pages:
-                        t = p.extract_text(layout=False) or ""
-                        pages_text.append(t)
-                        full_text += t + "\n"
-                        all_tables.extend(p.extract_tables() or [])
-            except Exception as e:
-                print(f"[SmartLayout] pdfplumber error: {e}")
-                # Fallback to pypdf
-                try:
-                    reader = PdfReader(str(file_path))
-                    for page in reader.pages:
-                        t = page.extract_text() or ""
-                        pages_text.append(t)
-                        full_text += t + "\n"
-                except Exception as ex:
-                    print(f"[SmartLayout] pypdf fallback error: {ex}")
+                    chunks = [page.extract_text(layout=False) or "" for page in pdf.pages]
+            except Exception:
+                reader = PdfReader(str(file_path))
+                chunks = [page.extract_text() or "" for page in reader.pages]
+        else:
+            reader = PdfReader(str(file_path))
+            chunks = [page.extract_text() or "" for page in reader.pages]
+        return "\n\n".join(chunk for chunk in chunks if chunk.strip())[:200_000]
 
-            if full_text.strip() and "invoice" not in full_text.lower():
-                try:
-                    reader = PdfReader(str(file_path))
-                    metadata_text = "\n".join(page.extract_text() or "" for page in reader.pages)
-                except Exception as ex:
-                    print(f"[SmartLayout] metadata text fallback error: {ex}")
-
-        if not full_text.strip():
-            return ParsedDocumentData(notes="No text could be extracted. Configure a vision provider or OCR service to process scanned documents.")
-
-        return cls._parse_layout_document(full_text, pages_text, all_tables, file_path.name, metadata_text)
-
-    @classmethod
-    def _parse_layout_document(cls, full_text: str, pages_text: List[str], all_tables: List[Any], filename: str, metadata_text: str = "") -> ParsedDocumentData:
-        metadata_source = f"{full_text}\n{metadata_text}"
-
-        # 1. Currency Detection
-        currency = "UNKNOWN"
-        if "€" in metadata_source or "EUR" in metadata_source:
-            currency = "EUR"
-        elif "£" in metadata_source or "GBP" in metadata_source:
-            currency = "GBP"
-        elif "$" in metadata_source or re.search(r"\bUSD\b", metadata_source, re.IGNORECASE):
-            currency = "USD"
-
-        # 2. Document Type Detection
-        doc_type = "INVOICE" if "invoice" in metadata_source.lower() or "invoice" in filename.lower() else "PURCHASE_ORDER"
-
-        # 3. Document Number Detection
-        doc_number = None
-        doc_num_patterns = [
-            r"(?:INVOICE\s*#|Invoice\s*number:|PO\s*NUMBER:|P\.O\.\s*NUMBER|ORDER\s*NUMBER)\s*[:\s]*([A-Za-z0-9\-_#]{3,30})",
-            r"(?:INVOICE|Invoice|PO)\s+([A-Za-z0-9\-_#]{3,30})",
-            r"\b(BPXINV-[0-9]+|INV-[0-9]+|PO-[0-9]+|NP#[0-9]+)\b"
-        ]
-        for pat in doc_num_patterns:
-            m = re.search(pat, metadata_source, re.IGNORECASE)
-            if m:
-                cand = m.group(1).strip()
-                if cand.lower() not in ["number", "date", "to", "none", "due", "after", "terms"]:
-                    doc_number = cand
-                    break
-        # 4. Document Date Detection
-        doc_date = None
-        date_patterns = [
-            r"(?:DATE|Date|Order Date|Dated)[:\s]*([0-9]{1,2}[./-][0-9]{1,2}[./-][0-9]{2,4}|[A-Za-z]+\s+\d{1,2},?\s+\d{4}|\d{4}[./-]\d{1,2}[./-]\d{1,2})",
-            r"\b(\d{2}\.\d{2}\.\d{4})\b",
-            r"\b([A-Za-z]+\s+\d{1,2},\s+\d{4})\b"
-        ]
-        for pat in date_patterns:
-            m = re.search(pat, full_text)
-            if m:
-                doc_date = m.group(1).strip()
-                break
-        if not doc_date:
-            doc_date = None
-
-        due_date = None
-        due_date_match = re.search(
-            r"(?:DUE[ \t]+DATE|PAYMENT[ \t]+DUE|DUE[ \t]+BY)[ \t:]*([0-9]{1,2}[./-][0-9]{1,2}[./-][0-9]{2,4}|[A-Za-z]+\s+\d{1,2},?\s+\d{4}|\d{4}[./-]\d{1,2}[./-]\d{1,2})",
-            full_text, re.IGNORECASE,
-        )
-        if due_date_match:
-            due_date = due_date_match.group(1).strip()
-        # Do not let a blank "Terms:" label consume the next document field.
-        terms_match = re.search(r"(?:PAYMENT[ \t]+)?TERMS?[ \t]*[:#]?[ \t]*([^\r\n]+)", full_text, re.IGNORECASE)
-        payment_terms = terms_match.group(1).strip().lstrip(":#").strip() if terms_match else None
-        payment_terms = payment_terms or None
-
-        # 5. Vendor Details Extraction
-        vendor_name = None
-        vendor_email = None
-        vendor_phone = None
-        vendor_address = None
-
-        # Email
-        email_m = re.search(r"\b([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)\b", full_text)
-        if email_m:
-            vendor_email = email_m.group(1)
-
-        # Phone
-        phone_m = re.search(r"\b(?:Phone|Telephone|Tel|Mobile|Fax)\s*[:#]?\s*(\+?[0-9][0-9\s\-()]{7,18}[0-9])", full_text, re.IGNORECASE)
-        if phone_m:
-            vendor_phone = phone_m.group(1).strip()
-
-        vendor_m = re.search(r"^\s*([^\n]+?)\s+SHIP TO:", full_text, re.IGNORECASE | re.MULTILINE)
-        if vendor_m:
-            candidate_vendor = vendor_m.group(1).strip()
-            if candidate_vendor.lower().strip(" :") not in {"to", "bill", "ship", "bill to", "ship to"}:
-                vendor_name = candidate_vendor
-
-        # Vendor Name: inspect top lines of page 0
-        if not vendor_name and pages_text:
-            first_lines = [l.strip() for l in pages_text[0].split("\n") if l.strip()]
-            for line in first_lines[:8]:
-                lower = line.lower()
-                if "invoice" in lower:
-                    candidate = re.split(r"\binvoice\b", line, maxsplit=1, flags=re.IGNORECASE)[0].strip(" #-:")
-                    if candidate:
-                        vendor_name = candidate
-                        break
-                    continue
-                if any(w in lower for w in ["invoice", "purchase order", "tel:", "fax:", "web:", "email:", "date", "to:", "ship to", "ship mode", "page", "item quantity", "balance due", "subtotal", "total:"]):
-                    continue
-                if re.fullmatch(r"[#\s\d.,-]+", line):
-                    continue
-                if len(line) > 2 and not line.startswith("+"):
-                    vendor_name = line
-                    break
-        if not vendor_name:
-            vendor_name = None
-
-        # Tax ID
-        tax_id = None
-        tax_id_m = re.search(r"(?:Tax\s*ID|VAT|EIN|PT)[:\s]*([A-Z0-9\-]{5,20})", full_text, re.IGNORECASE)
-        if tax_id_m:
-            tax_id = tax_id_m.group(1)
-
-        # 6. Buyer Details Extraction
-        buyer_company = None
-        buyer_name = None
-        buyer_address = None
-
-        buyer_header = re.search(r"(?im)^\s*(?:BILL(?:ED)?\s+TO|SHIP\s+TO|TO\s+SHIP\s+TO|TO)\s*:\s*(.*)$", full_text)
-        if buyer_header:
-            candidate_lines = []
-            same_line_value = re.sub(r"\b(?:BILL(?:ED)?\s+TO|SHIP\s+TO)\s*:", "", buyer_header.group(1), flags=re.IGNORECASE).strip()
-            if re.match(r"^(?:balance\s+due|item\b|subtotal\b|total\b|notes?\s*:|terms?\s*:)", same_line_value, re.IGNORECASE):
-                same_line_value = ""
-            if same_line_value:
-                candidate_lines.append(same_line_value)
-            lines_after_header = full_text[buyer_header.end():].splitlines()
-            ignored_contact_fields = ("ship mode", "phone", "tel", "fax", "email", "tax", "date", "terms")
-            stop_pattern = re.compile(r"^(?:balance\s+due|item\b|subtotal\b|total\b|grand\s+total|amount\s+due|notes?\s*:|terms?\s*:|order\s+id\s*:)", re.IGNORECASE)
-            for raw_line in lines_after_header:
-                line = raw_line.strip()
-                if not line:
-                    continue
-                if stop_pattern.match(line):
-                    break
-                if re.match(r"^[A-Za-z][A-Za-z /_-]*\s*:", line):
-                    label = line.split(":", 1)[0].strip().lower()
-                    if label in ignored_contact_fields:
-                        continue
-                    # A labeled field belongs to the document, not the buyer block.
-                    break
-                candidate_lines.append(line)
-                if len(candidate_lines) >= 4:
-                    break
-
-            if candidate_lines:
-                first_line = candidate_lines[0]
-                # These invoices put the customer's name and city on one line
-                # after "Bill To: Ship To:". Split only when the remainder has
-                # address punctuation, which gives us a reasonable boundary.
-                person_address = re.match(r"^([A-Z][A-Za-z'’-]+\s+[A-Z][A-Za-z'’-]+)\s+(.+,\s*)$", first_line)
-                if person_address:
-                    buyer_name = person_address.group(1).strip()
-                    address_parts = [person_address.group(2).strip()]
-                    address_parts.extend(candidate_lines[1:])
-                    buyer_address = " ".join(address_parts).strip()
-                elif re.fullmatch(r"[A-Z][A-Za-z'’-]+\s+[A-Z][A-Za-z'’-]+", first_line):
-                    buyer_name = first_line
-                    buyer_address = " ".join(candidate_lines[1:]).strip() or None
-                else:
-                    buyer_company = first_line
-                    buyer_address = " ".join(candidate_lines[1:]).strip() or None
-
-        # 7. Financial Summary Extraction
-        subtotal, tax, shipping, grand_total = 0.0, 0.0, 0.0, 0.0
-
-        m_sub = re.search(r"(?:SUBTOTAL|Subtotal|Sub-Total)\s*[:\s]*[€$£]?\s*([0-9,]+(?:\.[0-9]{1,2})?)", full_text, re.IGNORECASE)
-        if m_sub:
-            subtotal = clean_num(m_sub.group(1))
-
-        m_tax = re.search(r"(?:SALES\s*TAX|Sales\s*Tax|Tax|VAT|TVA)\s*(?:\([^)]*\))?[:\s]*[€$£]?\s*([0-9,]+(?:\.[0-9]{1,2})?)", full_text, re.IGNORECASE)
-        if m_tax:
-            tax = clean_num(m_tax.group(1))
-
-        m_ship = re.search(r"(?:SHIPPING(?:\s*&\s*(?:HANDLING|FREIGHT))?|Shipping\s*&\s*Freight|Shipping|Freight)\s*[:\s]*[€$£]?\s*([0-9,]+(?:\.[0-9]{1,2})?)", full_text, re.IGNORECASE)
-        if m_ship:
-            shipping = clean_num(m_ship.group(1))
-
-        discount = 0.0
-        m_discount = re.search(
-            r"\b(?:DISCOUNT|LESS)\b\s*(?:\([^)]*\))?\s*[:\s-]*[€$£]?\s*([0-9,]+(?:\.[0-9]{1,2})?)",
-            full_text,
-            re.IGNORECASE,
-        )
-        if m_discount:
-            discount = clean_num(m_discount.group(1))
-
-        # Grand total (handles dates in between e.g. 'Total Due By: November 12, 2021  213470')
-        m_tot = re.search(r"(?:BALANCE\s+DUE|TOTAL\s*DUE|GRAND\s*TOTAL|Grand\s*Total|Total\s*Due|TOTAL AMOUNT|AMOUNT DUE).*?(?:[A-Za-z]+\s+\d{1,2},?\s+\d{4})?\s*[€$£]?\s*([0-9,]+(?:\.[0-9]{1,2})?)", full_text, re.IGNORECASE)
-        if m_tot:
-            grand_total = clean_num(m_tot.group(1))
-
-        # 8. Adaptive Line Items Extraction
-        items: List[LineItem] = []
-
-        # Strategy A: Multi-page pdfplumber tables
-        # Track persistent column mapping across pages if table spans multiple pages
-        active_col_qty, active_col_desc, active_col_price, active_col_total, active_col_sku = -1, -1, -1, -1, -1
-
-        for tbl in all_tables:
-            if not tbl or len(tbl) < 1:
-                continue
-
-            header = [str(c).lower().strip() if c else "" for c in tbl[0]]
-            col_qty, col_desc, col_price, col_total, col_sku = -1, -1, -1, -1, -1
-
-            for idx, h in enumerate(header):
-                if any(k in h for k in ["sku", "product code", "item code", "item no"]):
-                    col_sku = idx
-                elif any(k in h for k in ["ordered service", "description", "service", "product"]):
-                    col_desc = idx
-                elif any(k in h for k in ["qty", "quantity", "ordered"]):
-                    col_qty = idx
-                elif any(k in h for k in ["unit price", "item price", "price", "rate"]):
-                    col_price = idx
-                elif any(k in h for k in ["total", "amount"]) and "price" not in h:
-                    col_total = idx
-
-            # If current table has headers, update active mapping
-            if col_desc != -1 and (col_total != -1 or col_price != -1):
-                active_col_qty = col_qty
-                active_col_desc = col_desc
-                active_col_price = col_price
-                active_col_total = col_total
-                active_col_sku = col_sku
-                start_row = 1
-            elif active_col_desc != -1 and len(tbl[0]) > max(active_col_desc, active_col_total, active_col_price):
-                # Continuation page without repeated header
-                col_qty = active_col_qty
-                col_desc = active_col_desc
-                col_price = active_col_price
-                col_total = active_col_total
-                col_sku = active_col_sku
-                start_row = 0
-            else:
-                continue
-
-            for row in tbl[start_row:]:
-                row_str = " ".join([str(c) for c in row if c])
-                if any(k in row_str.lower() for k in ["subtotal", "total due", "sales tax", "order date"]):
-                    continue
-                desc = row[col_desc] if col_desc < len(row) and row[col_desc] else ""
-                if not desc or not desc.strip():
-                    continue
-
-                qty = 1.0
-                if col_qty != -1 and col_qty < len(row) and row[col_qty]:
-                    q_val = clean_num(row[col_qty])
-                    if q_val > 0:
-                        qty = q_val
-                # Check for quantity in parentheses: e.g. "Item Name (10)"
-                q_paren = re.search(r"\((\d+)\)", desc)
-                if q_paren:
-                    qty = float(q_paren.group(1))
-
-                price = clean_num(row[col_price]) if col_price != -1 and col_price < len(row) else 0.0
-                total = clean_num(row[col_total]) if col_total != -1 and col_total < len(row) else 0.0
-                if total == 0.0 and qty > 0 and price > 0:
-                    total = round(qty * price, 2)
-
-                sku = str(row[col_sku]).strip() if col_sku != -1 and col_sku < len(row) and row[col_sku] else ""
-                desc_clean = desc.replace("\n", " ").strip()
-                if not sku:
-                    sku_m = re.search(r"\b([A-Z0-9]{1,5}-[A-Z0-9]{2,})\b", desc_clean)
-                    if sku_m:
-                        sku = sku_m.group(1)
-                if q_paren:
-                    desc_clean = desc_clean[:q_paren.start()].strip()
-                if sku:
-                    desc_clean = re.sub(rf"^{re.escape(sku)}\s*[-:]?\s*", "", desc_clean, flags=re.IGNORECASE)
-
-                items.append(LineItem(
-                    line_no=len(items) + 1,
-                    sku=sku,
-                    description=desc_clean,
-                    quantity=qty,
-                    unit_price=price,
-                    line_total=total
-                ))
-
-        # Strategy B: Single line regex with slash and special characters (e.g. sample_po_verified.pdf)
-        if not items:
-            line_pat = re.compile(r"^\s*(\d+)\s+([A-Z0-9\-_]+)\s+([A-Za-z0-9\s\-_.,#()/]+?)\s+(\d+(?:\.\d+)?)\s+\$?([0-9]+(?:\.[0-9]{2})?)\s+\$?([0-9]+(?:\.[0-9]{2})?)$")
-            for line in full_text.split("\n"):
-                lm = line_pat.match(line.strip())
-                if lm:
-                    items.append(LineItem(
-                        line_no=int(lm.group(1)),
-                        sku=lm.group(2),
-                        description=lm.group(3).strip(),
-                        quantity=float(lm.group(4)),
-                        unit_price=float(lm.group(5)),
-                        line_total=float(lm.group(6))
-                    ))
-
-        # Strategy C: Model Code Price line (e.g. invoice-3-0.pdf)
-        if not items:
-            b3_pat = re.compile(r"([A-Za-z0-9\-/\s]+?)\s+([0-9]{3}-[0-9]{2}-[0-9]{4})\s+([0-9]+(?:\.[0-9]{2})?)")
-            for line in full_text.split("\n"):
-                m = b3_pat.match(line.strip())
-                if m:
-                    model = m.group(1).strip()
-                    code = m.group(2).strip()
-                    price = float(m.group(3))
-                    items.append(LineItem(
-                        line_no=len(items) + 1,
-                        sku=code,
-                        description=model,
-                        quantity=1.0,
-                        unit_price=price,
-                        line_total=price
-                    ))
-
-        # Strategy D: Multi-block items (e.g. invoice-7-0.pdf)
-        if not items:
-            b7_matches = re.findall(r"(\d+)\.\s+([A-Za-z0-9\s\-]+?)\s+€?\s*([0-9]+)\n\s*([0-9\-]+)\s+(\d+)\s*pcs\.\s*€?\s*([0-9]+)", full_text)
-            for m in b7_matches:
-                items.append(LineItem(
-                    line_no=len(items) + 1,
-                    sku=m[3].strip(),
-                    description=m[1].strip(),
-                    quantity=clean_num(m[4]),
-                    unit_price=clean_num(m[5]),
-                    line_total=clean_num(m[2])
-                ))
-
-        # Strategy E: invoices with an Item / Quantity / Rate / Amount header
-        # and line descriptions that wrap onto following lines.
-        if not items and re.search(r"\bitem\b.*\bquantity\b.*\brate\b.*\bamount\b", full_text, re.IGNORECASE):
-            row_pat = re.compile(
-                r"^(?P<description>.+?)\s+(?P<quantity>\d+(?:\.\d+)?)\s+"
-                r"\$?(?P<unit>[0-9][0-9,]*\.\d{2})\s+\$?(?P<total>[0-9][0-9,]*\.\d{2})$"
-            )
-            inside_items = False
-            for raw_line in full_text.splitlines():
-                line = raw_line.strip()
-                lower = line.lower()
-                if not inside_items:
-                    if re.search(r"\bitem\b.*\bquantity\b.*\brate\b.*\bamount\b", line, re.IGNORECASE):
-                        inside_items = True
-                    continue
-                if re.match(r"^(?:sub\s*-?\s*total|balance\s+due|total\b|grand\s+total|amount\s+due|notes?\s*:|terms\s*:)", lower):
-                    break
-                if not line:
-                    continue
-                row_match = row_pat.match(line)
-                if row_match:
-                    description = row_match.group("description").strip()
-                    sku_match = re.search(r"\b([A-Z0-9]+(?:-[A-Z0-9]+)+)\b", description)
-                    sku = sku_match.group(1) if sku_match else ""
-                    if sku:
-                        description = re.sub(rf"\b{re.escape(sku)}\b", "", description).strip(" ,-")
-                    items.append(LineItem(
-                        line_no=len(items) + 1,
-                        sku=sku,
-                        description=description,
-                        quantity=clean_num(row_match.group("quantity")),
-                        unit_price=clean_num(row_match.group("unit")),
-                        line_total=clean_num(row_match.group("total")),
-                    ))
-                elif items:
-                    sku_match = re.search(r"\b([A-Z0-9]+(?:-[A-Z0-9]+)+)\b", line)
-                    if sku_match and not items[-1].sku:
-                        items[-1].sku = sku_match.group(1)
-                    items[-1].description = f"{items[-1].description} {line}".strip()
-                    if sku_match:
-                        items[-1].description = re.sub(rf"\b{re.escape(sku_match.group(1))}\b", "", items[-1].description).strip(" ,-")
-
-        # Auto-compute subtotal & total if not stated in text
-        calculated_subtotal = round(sum(i.line_total for i in items), 2)
-        if subtotal == 0.0 and calculated_subtotal > 0:
-            subtotal = calculated_subtotal
-        if grand_total == 0.0 and subtotal > 0:
-            grand_total = round(subtotal + tax + shipping, 2)
-
-        # Retain labeled fields that do not fit the standard invoice form.
-        known_labels = {
-            "invoice", "invoice number", "invoice #", "document number", "po number", "order number",
-            "date", "invoice date", "order date", "due date", "payment due", "due by", "terms", "payment terms",
-            "subtotal", "sub-total", "tax", "sales tax", "vat", "shipping", "freight", "discount",
-            "total", "grand total", "total due", "amount due", "balance due", "vendor", "supplier",
-            "bill to", "ship to", "to", "from", "email", "phone", "tel", "fax", "tax id", "vat id",
-            "description", "item", "quantity", "qty", "rate", "amount", "unit price",
-        }
-        additional_details = []
-        seen_details = set()
-        for raw_line in full_text.splitlines():
-            match = re.match(r"^\s*([A-Za-z][A-Za-z0-9 /#()._-]{1,60})\s*:\s*(.+?)\s*$", raw_line)
-            if not match:
-                continue
-            label, value = match.group(1).strip(), match.group(2).strip()
-            normalized_label = re.sub(r"\s+", " ", label.lower()).strip()
-            key = (normalized_label, value.lower())
-            if normalized_label in known_labels or key in seen_details:
-                continue
-            seen_details.add(key)
-            additional_details.append({"label": label, "value": value})
-        extracted_notes = None
-        notes_match = re.search(r"(?:^|\n)\s*notes?\s*:\s*(.+)", full_text, re.IGNORECASE)
-        if notes_match:
-            extracted_notes = notes_match.group(1).strip()
-
-        return ParsedDocumentData(
-            document_type=doc_type,
-            document_number=doc_number,
-            document_date=doc_date,
-            due_date=due_date,
-            payment_terms=payment_terms,
-            vendor=VendorInfo(
-                name=vendor_name,
-                tax_id=tax_id,
-                email=vendor_email,
-                phone=vendor_phone,
-                address=vendor_address
-            ),
-            buyer=BuyerInfo(
-                company=buyer_company,
-                name=buyer_name,
-                billing_address=buyer_address,
-                shipping_address=buyer_address
-            ),
-            line_items=items,
-            summary=FinancialSummary(
-                currency=currency,
-                subtotal=subtotal,
-                tax_amount=tax,
-                shipping_amount=shipping,
-                discount_amount=discount,
-                grand_total=grand_total
-            ),
-            notes=extracted_notes,
-            additional_details=additional_details,
-            source_text=(full_text[:199900] + "\n[Text clipped at 200,000 characters.]" if len(full_text) > 200000 else full_text),
-        )
 __all__ = ["DocumentExtractor", "clean_num"]

@@ -521,7 +521,7 @@ class ProviderCredentialRepository:
                     conn.execute("UPDATE provider_credentials SET is_selected = 1 WHERE id = ?", (replacement["id"],))
                     next_provider = replacement["provider"]
                 else:
-                    next_provider = "heuristic"
+                    next_provider = "auto"
                 conn.execute("UPDATE account_settings SET default_provider = ?, updated_at = ? WHERE user_id = ?", (next_provider, datetime.now(timezone.utc).isoformat(), user_id))
         conn.close()
         return result.rowcount > 0

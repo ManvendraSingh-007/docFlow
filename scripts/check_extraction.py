@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Run the local extraction pipeline over every PDF in a file or directory."""
+"""Run a selected AI extraction provider over every PDF in a file or directory."""
 
 import argparse
 import asyncio
+import os
 import sys
 from pathlib import Path
 
@@ -10,6 +11,7 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT_DIR))
 
 from backend.models.document import DocumentStatus
+from backend.config import settings
 from backend.services.extractor import DocumentExtractor
 
 
@@ -17,14 +19,23 @@ def display(value: str | None, fallback: str = "—") -> str:
     return " ".join(value.split()) if value and value.strip() else fallback
 
 
-async def inspect_pdf(path: Path) -> tuple[str, str]:
+async def inspect_pdf(path: Path, provider: str) -> tuple[str, str]:
     try:
-        # Supplying account settings with an explicit heuristic provider prevents
-        # global credentials from triggering paid external provider requests.
+        credentials = {
+            "default_provider": provider,
+            "gemini_api_key": settings.gemini_api_key,
+            "openai_api_key": settings.openai_api_key,
+            "mistral_api_key": os.getenv("MISTRAL_API_KEY", ""),
+            "openrouter_api_key": os.getenv("OPENROUTER_API_KEY", ""),
+            "gemini_model": os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite"),
+            "openai_model": os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+            "mistral_model": os.getenv("MISTRAL_MODEL", "mistral-small-2506"),
+            "openrouter_model": os.getenv("OPENROUTER_MODEL", "google/gemini-2.5-flash"),
+        }
         document = await DocumentExtractor.extract(
             path,
             "application/pdf",
-            account_settings={"default_provider": "heuristic"},
+            account_settings=credentials,
         )
         verification = document.verification
         status = verification.status if verification else DocumentStatus.FAILED
@@ -65,8 +76,9 @@ async def inspect_pdf(path: Path) -> tuple[str, str]:
 
 async def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Extract PDFs with DocFlow's local parser and summarize validation results."
+        description="Extract PDFs with a selected AI provider and summarize validation results."
     )
+    parser.add_argument("--provider", required=True, choices=("gemini", "openai", "mistral", "openrouter"), help="AI provider to call for every PDF")
     parser.add_argument(
         "path",
         nargs="?",
@@ -85,10 +97,10 @@ async def main() -> int:
     if not pdfs:
         parser.error(f"No PDF files found at: {target}")
 
-    print(f"Checking {len(pdfs)} PDF(s) with the local heuristic extractor.\n")
+    print(f"Checking {len(pdfs)} PDF(s) with {args.provider}. This sends each PDF to that provider and may incur usage charges.\n")
     counts = {"PASS": 0, "CHECK": 0, "FAIL": 0, "ERROR": 0}
     for path in pdfs:
-        label, _ = await inspect_pdf(path)
+        label, _ = await inspect_pdf(path, args.provider)
         counts[label] += 1
 
     completed = counts["PASS"] + counts["CHECK"] + counts["FAIL"]

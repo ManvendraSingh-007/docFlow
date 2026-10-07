@@ -39,13 +39,15 @@ source venv/bin/activate
 PYTHONPATH=. pytest tests
 ```
 
-### 4. Check a PDF folder with the local extractor
+### 4. Check a PDF folder with an AI provider
 ```bash
 source venv/bin/activate
-python scripts/check_extraction.py sample_data
+python scripts/check_extraction.py --provider gemini sample_data
 ```
 
-The command scans the folder recursively, prints one result per PDF, and summarizes verified, review-required, failed, and error counts. It uses the local heuristic parser and does not call Gemini or OpenAI. `PASS` reflects DocFlow's built-in checks; this is not a field-accuracy score without known expected values. To scan another folder or one PDF, pass its path instead of `sample_data`.
+Set the selected provider's API key in the environment first. The command sends every PDF to that provider and may incur usage charges. It prints one result per PDF and summarizes verified, review-required, failed, and error counts. `PASS` reflects DocFlow's arithmetic checks; it is not a field-accuracy score without known expected values. To scan another folder or one PDF, pass its path instead of `sample_data`.
+
+AI extraction returns standard invoice fields plus document-specific fields and tables. The table headings and values remain available in the inspection page, JSON response, CSV export, and webhook payload.
 
 ---
 

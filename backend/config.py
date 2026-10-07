@@ -44,7 +44,7 @@ class Settings(BaseModel):
     # AI Engine Keys
     gemini_api_key: str = os.getenv("GEMINI_API_KEY", "")
     openai_api_key: str = os.getenv("OPENAI_API_KEY", "")
-    default_provider: str = os.getenv("DEFAULT_PROVIDER", "auto") # auto, gemini, openai, heuristic
+    default_provider: str = os.getenv("DEFAULT_PROVIDER", "auto") # auto, gemini, openai, mistral, openrouter
     
     # Outbound Webhook config
     default_webhook_url: str = os.getenv("DEFAULT_WEBHOOK_URL", "")

@@ -52,6 +52,12 @@ class FinancialSummary(BaseModel):
 class AdditionalDetail(BaseModel):
     label: str
     value: str
+    section: Optional[str] = None
+
+class ExtractedTable(BaseModel):
+    title: str = "Document table"
+    columns: List[str] = Field(default_factory=list)
+    rows: List[List[str]] = Field(default_factory=list)
 
 class ValidationCheck(BaseModel):
     name: str
@@ -86,6 +92,7 @@ class ParsedDocumentData(BaseModel):
     extraction_error: Optional[str] = None
     notes: Optional[str] = None
     additional_details: List[AdditionalDetail] = Field(default_factory=list)
+    extracted_tables: List[ExtractedTable] = Field(default_factory=list)
     # Kept out of parsed_json/API list responses; persisted separately for inspection.
     source_text: Optional[str] = Field(default=None, exclude=True)
 

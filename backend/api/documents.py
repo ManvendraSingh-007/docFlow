@@ -20,10 +20,32 @@ from backend.services.webhook_dispatcher import WebhookDispatcher
 router = APIRouter(prefix="/api/documents", tags=["documents"])
 
 async def process_and_dispatch(doc_id: str, file_path: Path, mime_type: str, user_id: str) -> Optional[str]:
+    account_settings = {}
+    requested_provider = None
+    requested_model = None
     try:
         # Durable queue rows store paths as text; direct upload callers may pass Path.
         file_path = Path(file_path)
         account_settings = AccountSettingsRepository.get(user_id)
+        requested_provider = account_settings.get("default_provider") or "auto"
+        provider_credentials = account_settings.get("provider_credentials") or {}
+        if requested_provider in ("auto", "heuristic"):
+            requested_provider = next(
+                (provider for provider in ("gemini", "openai", "mistral", "openrouter")
+                 if provider_credentials.get(provider, {}).get("api_key")),
+                "auto",
+            )
+        requested_model = (
+            provider_credentials.get(requested_provider, {}).get("model")
+            or account_settings.get(f"{requested_provider}_model")
+        )
+        if not requested_model:
+            requested_model = {
+                "gemini": "gemini-3.1-flash-lite",
+                "openai": "gpt-4o-mini",
+                "mistral": "mistral-small-2506",
+                "openrouter": "google/gemini-2.5-flash",
+            }.get(requested_provider)
         # Extract structured data
         parsed_data = await DocumentExtractor.extract(file_path, mime_type, account_settings)
         
@@ -37,8 +59,6 @@ async def process_and_dispatch(doc_id: str, file_path: Path, mime_type: str, use
             webhook_url
             and webhook_secret
             and account_settings.get("auto_dispatch_on_verified")
-            and not parsed_data.extraction_fallback
-            and parsed_data.extraction_provider != "Local parser"
         ):
             if parsed_data.verification and parsed_data.verification.status == DocumentStatus.VERIFIED:
                 success, code, body, duration = await WebhookDispatcher.dispatch(
@@ -53,8 +73,6 @@ async def process_and_dispatch(doc_id: str, file_path: Path, mime_type: str, use
                 webhook_status = WebhookStatus.DELIVERED if success else WebhookStatus.FAILED
                 webhook_code = code
                 WebhookLogRepository.log(doc_id, webhook_url, code, body, duration, success)
-            elif parsed_data.extraction_fallback or parsed_data.extraction_provider == "Local parser":
-                webhook_status = WebhookStatus.SKIPPED
 
         DocumentRepository.update_parsed_data(doc_id, parsed_data, webhook_status, webhook_code, user_id)
         return None
@@ -63,6 +81,11 @@ async def process_and_dispatch(doc_id: str, file_path: Path, mime_type: str, use
         # Update as failed
         empty_data = ParsedDocumentData()
         empty_data.notes = f"Extraction failed: {str(e)}"
+        provider_names = {"gemini": "Google Gemini", "openai": "OpenAI", "mistral": "Mistral", "openrouter": "OpenRouter"}
+        empty_data.extraction_provider = provider_names.get(requested_provider)
+        empty_data.extraction_model = requested_model
+        empty_data.extraction_requested_provider = requested_provider
+        empty_data.extraction_error = str(e)
         DocumentValidator.validate(empty_data)
         DocumentRepository.update_parsed_data(doc_id, empty_data, WebhookStatus.FAILED, user_id=user_id)
         return str(e)
@@ -253,6 +276,13 @@ def export_csv(doc_id: str, user: dict = Depends(current_user)):
             item.get("quantity"), item.get("unit_price"), item.get("line_total"),
             subtotal, tax, shipping, total, currency
         ])
+
+    for table in data.get("extracted_tables", []):
+        writer.writerow([])
+        writer.writerow([table.get("title") or "Document table"])
+        if table.get("columns"):
+            writer.writerow(table["columns"])
+        writer.writerows(table.get("rows") or [])
 
     output.seek(0)
     filename = f"po_export_{po_num or doc_id[:8]}.csv"

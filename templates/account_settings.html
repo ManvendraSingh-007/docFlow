@@ -47,7 +47,6 @@
           <option value="openai">OpenAI</option>
           <option value="mistral">Mistral</option>
           <option value="openrouter">OpenRouter</option>
-          <option value="heuristic">Local parser</option>
         </select>
       </label>
       <div id="providerHint" class="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-600">Choose a provider to add or select one of its saved API keys.</div>
@@ -117,9 +116,11 @@ async function loadSettings() {
     const setValue = (id, value) => { const el = document.getElementById(id); if (el) el.value = value || ""; };
     setValue("profileName", data.full_name); setValue("profileEmail", data.email); setValue("companyName", data.company_name);
     setValue("webhookUrl", data.webhook_url);
-    const defaultProvider = data.default_provider === "auto" ? (["gemini", "openai", "mistral", "openrouter"].find(provider => data[`${provider}_api_key_configured`]) || "heuristic") : data.default_provider;
-    setValue("defaultProvider", defaultProvider || "heuristic");
-    if (data.default_provider === "auto") await requestJson("/api/settings", "POST", { default_provider: defaultProvider || "heuristic" });
+    const defaultProvider = data.default_provider === "auto" || data.default_provider === "heuristic"
+      ? (["gemini", "openai", "mistral", "openrouter"].find(provider => data[`${provider}_api_key_configured`]) || "gemini")
+      : data.default_provider;
+    setValue("defaultProvider", defaultProvider || "gemini");
+    if (data.default_provider === "auto" || data.default_provider === "heuristic") await requestJson("/api/settings", "POST", { default_provider: defaultProvider || "gemini" });
     updateProviderPanel();
     const autoDispatch = document.getElementById("autoDispatch"); if (autoDispatch) autoDispatch.checked = data.auto_dispatch_on_verified;
     await loadCredentials();
@@ -271,12 +272,12 @@ async function testWebhook() {
 }
 
 function updateProviderPanel() {
-  const provider = document.getElementById("defaultProvider")?.value || "heuristic";
+  const provider = document.getElementById("defaultProvider")?.value || "gemini";
   const keyPanel = document.getElementById("providerKeyPanel");
   const usesProvider = ["gemini", "openai", "mistral", "openrouter"].includes(provider);
   keyPanel?.classList.toggle("hidden", !usesProvider);
   const hint = document.getElementById("providerHint");
-  if (hint) hint.textContent = usesProvider ? "Add an API key for this provider or choose one already saved below." : "The local parser runs without an API key.";
+  if (hint) hint.textContent = "Choose an AI provider to add or select one of its saved API keys.";
   const providerLabel = document.getElementById("credentialProviderLabel");
   if (providerLabel) providerLabel.textContent = providerNames[provider] || "";
   const providerKey = savedCredentials.find(item => item.provider === provider);

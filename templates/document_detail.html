@@ -187,6 +187,28 @@
         </div>
       </div>
 
+      {% if doc.data and doc.data.extracted_tables %}
+        <section class="card-shell overflow-hidden" aria-labelledby="extractedTablesHeading">
+          <div class="border-b border-slate-200 px-5 py-4">
+            <h2 id="extractedTablesHeading" class="text-sm font-bold uppercase tracking-[0.12em] text-slate-700">Document tables</h2>
+            <p class="mt-1 text-xs text-slate-500">Columns and rows captured from this document.</p>
+          </div>
+          <div class="space-y-5 p-5">
+            {% for table in doc.data.extracted_tables %}
+              <div>
+                <h3 class="mb-2 text-sm font-semibold text-slate-800">{{ table.title }}</h3>
+                <div class="overflow-x-auto rounded-lg border border-slate-200">
+                  <table class="min-w-full divide-y divide-slate-200 text-xs">
+                    <thead class="bg-slate-50"><tr>{% for column in table.columns %}<th class="whitespace-nowrap px-3 py-2 text-left font-semibold text-slate-600">{{ column }}</th>{% endfor %}</tr></thead>
+                    <tbody class="divide-y divide-slate-100 bg-white">{% for row in table.rows %}<tr>{% for cell in row %}<td class="whitespace-pre-wrap px-3 py-2 align-top text-slate-700">{{ cell }}</td>{% endfor %}</tr>{% endfor %}</tbody>
+                  </table>
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+        </section>
+      {% endif %}
+
       {% if doc.data and (doc.data.notes or doc.data.additional_details) %}
         <section class="card-shell p-5" aria-labelledby="extraDetailsHeading">
           <h2 id="extraDetailsHeading" class="mb-3 text-sm font-bold uppercase tracking-[0.12em] text-slate-700">Other document details</h2>
@@ -195,6 +217,7 @@
             <dl class="grid gap-2 sm:grid-cols-2">
               {% for detail in doc.data.additional_details %}
                 <div class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                  {% if detail.section %}<p class="mb-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">{{ detail.section }}</p>{% endif %}
                   <dt class="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{{ detail.label }}</dt>
                   <dd class="mt-1 whitespace-pre-wrap break-words text-sm text-slate-800">{{ detail.value }}</dd>
                 </div>
@@ -469,6 +492,7 @@ async function saveAndRevalidate() {
     extraction_error: parsedDoc.extraction_error || null,
     notes: parsedDoc.notes || null,
     additional_details: parsedDoc.additional_details || [],
+    extracted_tables: parsedDoc.extracted_tables || [],
     summary: {
       currency: documentCurrency,
       subtotal: parseFloat(document.getElementById("subtotalInput").value) || 0,

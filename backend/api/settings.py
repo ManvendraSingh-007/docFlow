@@ -95,7 +95,7 @@ def delete_credential(credential_id: str, user: dict = Depends(current_user)):
 @router.post("")
 def update_settings(payload: SettingsUpdatePayload, user: dict = Depends(current_user)):
     values = payload.model_dump(exclude_unset=True)
-    if values.get("default_provider") not in (None, "auto", "gemini", "openai", "mistral", "openrouter", "heuristic"):
+    if values.get("default_provider") not in (None, "auto", "gemini", "openai", "mistral", "openrouter"):
         raise HTTPException(status_code=422, detail="Choose a supported extraction provider")
     if values.get("openrouter_model") is not None and (not values["openrouter_model"].strip() or len(values["openrouter_model"]) > 160):
         raise HTTPException(status_code=422, detail="Enter a valid OpenRouter model ID")
