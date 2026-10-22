@@ -27,7 +27,7 @@ For deployments, set a strong shared `APP_SECRET_KEY`, set `SECURE_COOKIES=true`
 
 ### 2. Start and create an account
 ```bash
-cd /home/manvendrasingh_/Projects/docflow
+cd docflow
 ./run.sh
 ```
 
